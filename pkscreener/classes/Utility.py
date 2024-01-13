@@ -144,13 +144,17 @@ class tools:
                 os.makedirs(os.path.dirname(os.path.join(os.getcwd(),f"actions-data-scan{os.sep}")), exist_ok=True)
             fileName = os.path.join(outputFolder,f"{choices}.txt")
             items = []
+            needsWriting = False
             if os.path.isfile(fileName):
-                #File already exists. Let's combine
-                with open(fileName, 'r') as fe:
-                    stocks = fe.read()
-                    items = stocks.split(",")
-                    stockList = list(set(items))
-                    finalStocks = ",".join(stockList)
+                if df is not None and len(df) > 0:
+                    #File already exists. Let's combine because there are new stocks found
+                    with open(fileName, 'r') as fe:
+                        stocks = fe.read()
+                        items = stocks.split(",")
+                        stockList = sorted(list(set(items)))
+                        finalStocks = ",".join(stockList)
+            else:
+                needsWriting = True
             if df is not None and len(df) > 0:
                 df.sort_values(by=["Stock"], ascending=True, inplace=True)
                 df.to_pickle(lastScreened)
@@ -159,10 +163,12 @@ class tools:
                     df_s.reset_index(inplace=True)
                     newStocks = df_s["Stock"].to_json(orient='records', lines=True).split(",")
                     items.extend(newStocks)
-                    stockList = list(set(items))
+                    stockList = sorted(list(set(items)))
                     finalStocks = ",".join(stockList)
-            with open(fileName, 'w') as f:
-                f.write(finalStocks)
+                    needsWriting = True
+            if needsWriting:
+                with open(fileName, 'w') as f:
+                    f.write(finalStocks)
         except IOError as e:  # pragma: no cover
             default_logger().debug(e, exc_info=True)
             input(
