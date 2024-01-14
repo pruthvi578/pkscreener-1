@@ -30,6 +30,7 @@ import argparse
 import builtins
 import logging
 import multiprocessing
+# import traceback
 
 # Keep module imports prior to classes
 import os
@@ -44,24 +45,36 @@ try:
 except Exception:
     pass
 
-
+printenabled=False
+originalStdOut=None
+original__stdout=None
 def decorator(func):
     def new_func(*args, **kwargs):
-        return
-        # if printenabled:
-        #     func("print:",*args,**kwargs)
-        #     func("input:",*args,**kwargs)
+        if printenabled:
+            func(*args,**kwargs)
 
     return new_func
 
 
 # print = decorator(print) # current file
-def disableSysOut(input=True):
-    builtins.print = decorator(builtins.print)  # all files
-    if input:
-        builtins.input = decorator(builtins.input)  # all files
-    sys.stdout = open(os.devnull, "w")
-    sys.__stdout__ = open(os.devnull, "w")
+def disableSysOut(input=True, disable=True):
+    global printenabled
+    printenabled = not disable
+    if disable:
+        global originalStdOut, original__stdout
+        if originalStdOut is None:
+            builtins.print = decorator(builtins.print)  # all files
+            if input:
+                builtins.input = decorator(builtins.input)  # all files
+            originalStdOut = sys.stdout
+            original__stdout = sys.__stdout__
+        sys.stdout = open(os.devnull, "w")
+        sys.__stdout__ = open(os.devnull, "w")
+    else:
+        sys.stdout.close()
+        sys.__stdout__.close()
+        sys.stdout = originalStdOut
+        sys.__stdout__ = original__stdout
 
 
 from time import sleep
@@ -216,14 +229,17 @@ def runApplication():
 def pkscreenercli():
     if sys.platform.startswith("darwin"):
         try:
-            multiprocessing.set_start_method("fork")
-        except RuntimeError:
+            if multiprocessing.get_start_method() != "fork":
+                multiprocessing.set_start_method("fork")
+        except RuntimeError as e:
             print(
                 "[+] RuntimeError with 'multiprocessing'.\n[+] Please contact the Developer, if this does not work!"
             )
+            # print(e)
+            # traceback.print_exc()
             pass
     configManager.getConfig(ConfigManager.parser)
-    configManager.restartRequestsCache()
+    # configManager.restartRequestsCache()
 
     if args.log or configManager.logsEnabled:
         setupLogger(shouldLog=True, trace=args.testbuild)
@@ -236,7 +252,11 @@ def pkscreenercli():
     import pkscreener.classes.Utility as Utility
 
     configManager.default_logger = default_logger()
-    Utility.tools.clearScreen()
+    global originalStdOut
+    if originalStdOut is None:
+        # Clear only if this is the first time it's being called from some
+        # loop within workflowtriggers.
+        Utility.tools.clearScreen()
 
     if args.prodbuild:
         disableSysOut()
@@ -289,6 +309,7 @@ def runApplicationForScreening(tools):
             if args.exit or args.user is not None:
                 break
         if args.v:
+            disableSysOut(disable=False)
             return
         sys.exit(0)
     except Exception as e:  # pragma: no cover
@@ -297,6 +318,7 @@ def runApplicationForScreening(tools):
             "[+] An error occurred! Please run with '-l' option to collect the logs.\n[+] For example, 'pkscreener -l' and then contact the developer!"
         )
         if args.v:
+            disableSysOut(disable=False)
             return
         sys.exit(0)
 
