@@ -352,7 +352,7 @@ def triggerScanWorkflowActions(launchLocal=False, scanDaysInPast=0):
             choices = scanChoices(options)
             scanResultFilesPath = f"{os.path.join(scanOutputDirectory(),choices)}_*.txt"
             if args.branchname is not None:
-                Committer.commitTempOutcomes(addPath=scanResultFilesPath,commitMessage=f"[Temp-Commit] WorkflowTrigger{choices}",branchName=args.branchname)
+                Committer.commitTempOutcomes(addPath=scanResultFilesPath,commitMessage=f"[Temp-Commit-{choices}]",branchName=args.branchname)
         else:
             if args.user is None or len(args.user) == 0:
                 args.user = ""
@@ -392,7 +392,7 @@ def scanOutputDirectory(backtest=False):
     return outputFolder
 
 def scanChoices(options):
-    choices = getFormattedChoices(options).replace("B:30","X").replace("B","X").replace("G","X")
+    choices = getFormattedChoices(options).replace("B:30","X").replace("B_30","X").replace("B","X").replace("G","X")
     return choices
 
 def scanResultExists(options, nthDay=0,returnFalseIfSizeZero=True):
@@ -409,14 +409,14 @@ def scanResultExists(options, nthDay=0,returnFalseIfSizeZero=True):
         if returnFalseIfSizeZero:
             fileSize = os.path.getsize(fileName)
             if fileSize <= 2:
-                print(f"Saved scan result size is 0:{fileName}")
+                print(f"{datetime.datetime.now(pytz.timezone('Asia/Kolkata'))} :Saved scan result size is 0:{fileName}")
             else:
-                print(f"Skipping. Latest scan result already exists:{fileName}")
+                print(f"{datetime.datetime.now(pytz.timezone('Asia/Kolkata'))} :Skipping. Latest scan result already exists:{fileName}")
                 return True
         else:
-            print(f"Skipping. Latest scan result already exists:{fileName}")
+            print(f"{datetime.datetime.now(pytz.timezone('Asia/Kolkata'))} :Skipping. Latest scan result already exists:{fileName}")
             return True
-    print(f"Scanning for {choices}_{today}")
+    print(f"{datetime.datetime.now(pytz.timezone('Asia/Kolkata'))} :Scanning for {choices}_{today}")
     return False
 
 def triggerBacktestWorkflowActions(launchLocal=False):
