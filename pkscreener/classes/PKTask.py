@@ -1,5 +1,5 @@
 """
-The MIT License (MIT)
+    The MIT License (MIT)
 
     Copyright (c) 2023 pkjmesra
 
@@ -22,4 +22,11 @@ The MIT License (MIT)
     SOFTWARE.
 
 """
-VERSION = '0.44.20240217.157'
+class PKTask:
+    def __init__(self, taskName=None, long_running_fn=None):
+        if taskName is None or taskName == "":
+            raise ValueError("taskName cannot be None or empty string!")
+        if long_running_fn is None:
+            raise ValueError("long_running_fn cannot be None!")
+        self.taskName = taskName
+        self.long_running_fn = long_running_fn
