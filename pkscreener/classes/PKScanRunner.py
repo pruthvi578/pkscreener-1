@@ -24,6 +24,7 @@
 """
 import os
 import sys
+import time
 import pandas as pd
 import multiprocessing
 from time import sleep
@@ -116,10 +117,11 @@ class PKScanRunner:
         actualHistoricalDuration = (samplingDuration - fillerPlaceHolder)
         return samplingDuration,fillerPlaceHolder,actualHistoricalDuration
 
-    def addStocksToItemList(userArgs, testing, testBuild, newlyListedOnly, downloadOnly, minRSI, maxRSI, insideBarToLookback, respChartPattern, daysForLowestVolume, backtestPeriod, reversalOption, maLength, listStockCodes, menuOption, executeOption, volumeRatio, items, daysInPast):
+    def addStocksToItemList(userArgs, testing, testBuild, newlyListedOnly, downloadOnly, minRSI, maxRSI, insideBarToLookback, respChartPattern, daysForLowestVolume, backtestPeriod, reversalOption, maLength, listStockCodes, menuOption, exchangeName,executeOption, volumeRatio, items, daysInPast):
         moreItems = [
                         (
                             menuOption,
+                            exchangeName,
                             executeOption,
                             reversalOption,
                             maLength,
@@ -228,7 +230,28 @@ class PKScanRunner:
         choices = f"{choices}{'_i' if isIntraday else ''}"
         return choices
 
-    def PrepareAndRunScan(keyboardInterruptEvent,screenCounter,screenResultsCounter,stockDict,testing, backtestPeriod, menuOption, samplingDuration, items,screenResults, saveResults, backtest_df,scanningCb):
+    def runScanWithParams(keyboardInterruptEvent,screenCounter,screenResultsCounter,stockDict,testing, backtestPeriod, menuOption, samplingDuration, items,screenResults, saveResults, backtest_df,scanningCb):
+        tasks_queue, results_queue, scr, consumers = PKScanRunner.prepareToRunScan(keyboardInterruptEvent,screenCounter, screenResultsCounter, stockDict, items)
+        screenResults, saveResults, backtest_df = scanningCb(
+                    menuOption,
+                    items,
+                    tasks_queue,
+                    results_queue,
+                    len(items),
+                    backtestPeriod,
+                    samplingDuration - 1,
+                    consumers,
+                    screenResults,
+                    saveResults,
+                    backtest_df,
+                    testing=testing,
+                )
+
+        print(colorText.END)
+        PKScanRunner.terminateAllWorkers(consumers, tasks_queue, testing)
+        return screenResults, saveResults,backtest_df,scr
+
+    def prepareToRunScan(keyboardInterruptEvent, screenCounter, screenResultsCounter, stockDict, items):
         tasks_queue, results_queue, totalConsumers = PKScanRunner.initQueues(len(items))
         scr = ScreeningStatistics.ScreeningStatistics(PKScanRunner.configManager, default_logger())
         consumers = [
@@ -250,24 +273,7 @@ class PKScanRunner:
                     for _ in range(totalConsumers)
                 ]
         PKScanRunner.startWorkers(consumers)
-        screenResults, saveResults, backtest_df = scanningCb(
-                    menuOption,
-                    items,
-                    tasks_queue,
-                    results_queue,
-                    len(items),
-                    backtestPeriod,
-                    samplingDuration - 1,
-                    consumers,
-                    screenResults,
-                    saveResults,
-                    backtest_df,
-                    testing=testing,
-                )
-
-        print(colorText.END)
-        PKScanRunner.terminateAllWorkers(consumers, tasks_queue, testing)
-        return screenResults, saveResults,backtest_df,scr
+        return tasks_queue,results_queue,scr,consumers
     
     def startWorkers(consumers):
         try:
@@ -287,9 +293,13 @@ class PKScanRunner:
             + f"[+] Using Period:{PKScanRunner.configManager.period} and Duration:{PKScanRunner.configManager.duration} for scan! You can change this in user config."
             + colorText.END
         )
+        start_time = time.time()
         for worker in consumers:
+            sys.stdout.write(f"{round(time.time() - start_time)}.")
             worker.daemon = True
             worker.start()
+        print(f"Started all workers in {time.time() - start_time}s")
+        sys.stdout.write("\x1b[1A")
 
     def terminateAllWorkers(consumers, tasks_queue, testing):
         # Exit all processes. Without this, it threw error in next screening session

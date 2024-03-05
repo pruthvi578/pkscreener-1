@@ -53,7 +53,7 @@ start_time = datetime.now()
 MINUTES_5_IN_SECONDS = 300
 
 from PKDevTools.classes.Telegram import get_secrets
-
+from PKDevTools.classes.ColorText import colorText
 from pkscreener.classes.MenuOptions import MenuRenderStyle, menu, menus
 from pkscreener.classes.WorkflowManager import run_workflow
 from pkscreener.globals import showSendConfigInfo, showSendHelpInfo
@@ -125,7 +125,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = InlineKeyboardMarkup(keyboard)
     cmds = m0.renderForMenu(
         selectedMenu=None,
-        skip=["S", "T", "E", "U", "Z"],
+        skip=["S", "T", "E", "U", "Z","C"],
         asList=True,
         renderStyle=MenuRenderStyle.STANDALONE,
     )
@@ -177,6 +177,7 @@ async def XScanners(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         .replace("     ", "")
         .replace("    ", "")
         .replace("\t", "")
+        .replace(colorText.FAIL,"").replace(colorText.END,"")
     )
     mns = m1.renderForMenu(
         m0.find(data),
@@ -630,7 +631,7 @@ def default_markup(inlineMenus):
 async def sendUpdatedMenu(menuText, update: Update, context, reply_markup):
     try:
         await update.callback_query.edit_message_text(
-            text=menuText.replace("     ", "").replace("    ", "").replace("\t", ""),
+            text=menuText.replace("     ", "").replace("    ", "").replace("\t", "").replace(colorText.FAIL,"").replace(colorText.END,""),
             reply_markup=reply_markup,
         )
     except Exception:# pragma: no cover
@@ -883,7 +884,7 @@ async def command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if len(selection) == 2:
             m0.renderForMenu(
                 selectedMenu=None,
-                skip=["S", "T", "E", "U", "Z"],
+                skip=["S", "T", "E", "U", "Z", "C"],
                 renderStyle=MenuRenderStyle.STANDALONE,
             )
             selectedMenu = m0.find(selection[0].upper())
@@ -942,7 +943,7 @@ async def command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         elif len(selection) == 3:
             m0.renderForMenu(
                 selectedMenu=None,
-                skip=["S", "T", "E", "U", "Z"],
+                skip=["S", "T", "E", "U", "Z","C"],
                 renderStyle=MenuRenderStyle.STANDALONE,
             )
             selectedMenu = m0.find(selection[0].upper())
@@ -1069,7 +1070,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     cmds = m0.renderForMenu(
         selectedMenu=None,
-        skip=["S", "T", "E", "U", "Z"],
+        skip=["S", "T", "E", "U", "Z","C"],
         asList=True,
         renderStyle=MenuRenderStyle.STANDALONE,
     )
@@ -1123,7 +1124,7 @@ def _shouldAvoidResponse(update):
 def addCommandsForMenuItems(application):
     cmds0 = m0.renderForMenu(
         selectedMenu=None,
-        skip=["S", "T", "E", "U", "Z"],
+        skip=["S", "T", "E", "U", "Z","C"],
         asList=True,
         renderStyle=MenuRenderStyle.STANDALONE,
     )
