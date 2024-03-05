@@ -787,6 +787,7 @@ class tools:
         exists, cache_file = tools.afterMarketStockDataExists(
             isIntraday, forceLoad=forceLoad
         )
+        initialLoadCount = len(stockDict)
         if PKDateUtilities.isTradingTime() or downloadOnly:
             stockDict = tools.downloadLatestData(stockDict,configManager,stockCodes,exchangeSuffix=exchangeSuffix)
             # return stockDict
@@ -828,7 +829,11 @@ class tools:
                             # just now and also copy the additional data like, MF/FII,FairValue
                             # etc. data, from yesterday's saved data.
                             try:
-                                stockDict[stock] = df_or_dict | stockDict.get(stock)
+                                existingPreLoadedData = stockDict.get(stock)
+                                if existingPreLoadedData is not None:
+                                    stockDict[stock] = df_or_dict | existingPreLoadedData
+                                else:
+                                    stockDict[stock] = df_or_dict
                             except:
                                 # Probably, the "stock" got removed from the latest download
                                 # and so, was not found in stockDict
@@ -938,7 +943,11 @@ class tools:
                                 # just now and also copy the additional data like, MF/FII,FairValue
                                 # etc. data, from yesterday's saved data.
                                 try:
-                                    stockDict[stock] = df_or_dict | stockDict.get(stock)
+                                    existingPreLoadedData = stockDict.get(stock)
+                                    if existingPreLoadedData is not None:
+                                        stockDict[stock] = df_or_dict | existingPreLoadedData
+                                    else:
+                                        stockDict[stock] = df_or_dict
                                 except:
                                     # Probably, the "stock" got removed from the latest download
                                     # and so, was not found in stockDict
@@ -969,6 +978,8 @@ class tools:
                 + "[+] Cache unavailable on pkscreener server, Continuing.."
                 + colorText.END
             )
+        # See if we need to save stock data
+        tools.saveStockData(stockDict,configManager,initialLoadCount,isIntraday,downloadOnly)
         return stockDict
 
     # Save screened results to excel
@@ -1281,7 +1292,7 @@ class tools:
                     )
                 )
                 return (resp, percent / 100.0)
-            if resp >= 0 and resp <= 6:
+            if resp >= 0 and resp <= 7:
                 return resp, 0
             raise ValueError
         except ValueError as e:  # pragma: no cover
