@@ -69,12 +69,12 @@ jobs:
     outputs:
       runIdentifier: ${{ github.event.inputs.id }}
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       with:
         ref: main
 
     - name: Set up Python 
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ inputs.targetPythonVersion || 3.11 }}
       
@@ -120,7 +120,7 @@ jobs:
   #   needs: [Generic]
   #   name: Delete workflow run
   #   steps:
-  #     - uses: actions/checkout@v2
+  #     - uses: actions/checkout@v4
   #       with:
   #         ref: main
 

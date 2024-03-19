@@ -34,7 +34,7 @@ on:
   workflow_dispatch:
 
   schedule:
-    - cron: '0 15,16,17,19,20 * * 0-6'
+    - cron: '0 20 * * 0-6'
 
 jobs:
   # Single deploy job no building
@@ -55,7 +55,7 @@ jobs:
           ref: gh-pages
 
       - name: Set up Python 
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: 3.11
 
