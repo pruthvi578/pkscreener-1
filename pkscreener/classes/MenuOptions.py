@@ -26,21 +26,29 @@ from enum import Enum
 
 from PKDevTools.classes.ColorText import colorText
 from PKDevTools.classes.log import default_logger
-
+from PKDevTools.classes.OutputControls import OutputControls
 import pkscreener.classes.ConfigManager as ConfigManager
+from pkscreener.classes.OtaUpdater import OTAUpdater
+from pkscreener.classes import VERSION
 
 configManager = ConfigManager.tools()
+MENU_SEPARATOR = ""
+LINE_SEPARATOR = "\n"
 
 level0MenuDict = {
     "X": "Scanners",
+    "M": "Monitor Intraday",
     "S": "Strategies",
     "B": "Backtests",
     "G": "Growth of 10k",
+    "C": "Analyse morning vs close outcomes",
     "T": "~",
+    "D": "Download Daily OHLC Data for the Past Year",
+    "I": "Download Intraday OHLC Data for the Last Trading Day",
     "E": "Edit user configuration",
     "Y": "View your user configuration",
-    "C": "Analyse morning vs close outcomes",
     "U": "Check for software update",
+    "L": "Collect Logs for Debugging",
     "H": "Help / About Developer",
     "Z": "Exit (Ctrl + C)",
 }
@@ -64,9 +72,9 @@ level1_X_MenuDict = {
     "8": "Nifty Smallcap 250",
     "9": "Nifty Midcap 50   ",
     "10": "Nifty Midcap 100",
-    "11": "Nifty Midcap 150",
+    "11": "Nifty Midcap 150 ",
     "12": "Nifty (All Stocks)",
-    "13": "Newly Listed (IPOs in last 2 Year)        ",
+    "13": "Newly Listed (IPOs in last 2 Year)           ",
     "14": "F&O Stocks Only",
     "15": "NASDAQ",
     "M": "Back to the Top/Main menu",
@@ -77,7 +85,7 @@ level2_X_MenuDict = {
     "1": "Probable Breakouts/Breakdowns   ",
     "2": "Today's Breakouts/Breakdowns",
     "3": "Consolidating stocks            ",
-    "4": "Lowest Volume in last 'N'-days (Early Breakout Detection)",
+    "4": "Lowest Volume in last N-days (Early Breakout Detection)",
     "5": "RSI screening                   ",
     "6": "Reversal Signals",
     "7": "Stocks making Chart Patterns    ",
@@ -85,12 +93,12 @@ level2_X_MenuDict = {
     "9": "Volume gainers                  ",
     "10": "Closing at least 2% up since last 3 days",
     "11": "Short term bullish (Ichimoku)  ",
-    "12": "15 Minute Price & Volume breakout(Intraday)",
+    "12": "N-Minute Price & Volume breakout(Intraday)",
     "13": "Bullish RSI & MACD             ",
     "14": "NR4 Daily Today",
     "15": "52 week low breakout(today)(Sell)",
     "16": "10 days low breakout(Sell)",
-    "17": "52 week high breakout(today)"   ,
+    "17": "52 week high breakout(today)     ",
     "18": "Bullish Aroon(14) Crossover",
     "19": "MACD Histogram x below 0 (Sell) ",
     "20": "Bullish for next day",
@@ -98,9 +106,10 @@ level2_X_MenuDict = {
     "22": "View Stock Performance         ",
     "23": "Breaking out now               ",
     "24": "Higher Highs,Lows & Close (SuperTrend)",
-    "25": "Lower Highs,Lows (Sell/Watch for Rev.)",
+    "25": "Lower Highs,Lows (Watch for Rev.)",
     "26": "Stocks with stock-split/bonus/dividends",
-    # "26": "RSI above 30 and price > psar      ",
+    "27": "ATR Cross                      ",
+    "28": "Bullish Higher Opens           ",
     # "27": "Intraday Momentum Build-up      ",
     # "28": "Extremely bullish daily close      ",
     # "29": "Rising RSI                      ",
@@ -119,13 +128,14 @@ level3_X_Reversal_MenuDict = {
     "7": "Lorentzian Classifier (Machine Learning based indicator)",
     "8": "PSAR and RSI reversal",
     "9": "Rising RSI",
+    "10": "RSI MA Reversal",
     "0": "Cancel",
 }
 level3_X_ChartPattern_MenuDict = {
     "1": "Bullish Inside Bar (Flag) Pattern",
     "2": "Bearish Inside Bar (Flag) Pattern(Sell)",
     "3": "The Confluence (50 & 200 MA/EMA)",
-    "4": "VCP (Experimental)",
+    "4": "VCP (Volatility Contraction Pattern)",
     "5": "Buying at Trendline (Ideal for Swing/Mid/Long term)",
     "6": "Bollinger Bands (TTM) Squeeze",
     "7": "Candle-stick Patterns",
@@ -190,6 +200,8 @@ class menu:
         self.isException = None
         self.hasLeftSibling = False
         self.parent = None
+        self.line = 0
+        self.lineIndex = 0
 
     def create(self, key, text, level=0, isException=False, parent=None):
         self.menuKey = str(key)
@@ -197,10 +209,12 @@ class menu:
         self.level = level
         self.isException = isException
         self.parent = parent
+        self.line = 0
+        self.lineIndex = 0
         return self
 
     def keyTextLabel(self):
-        return f"{self.menuKey} > {self.menuText}"
+        return f"{MENU_SEPARATOR}{self.menuKey} > {self.menuText}"
 
     def commandTextKey(self, hasChildren=False):
         cmdText = ""
@@ -268,10 +282,12 @@ class menus:
     def allMenus(topLevel="X",index=12):
         menuOptions = [topLevel]
         indexOptions =[index]
-        scanOptions = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,23,24,25]
-        scanSubOptions = {6:[1,2,3,4,5,6,{7:[1,2]}], 
-                          7:[1,2,{3:[1,2]},4,5,{6:[1,2,3]},7],
-                         21:[3,5,6,7,8,9]}
+        scanOptions = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,23,24,25,27,28]
+        scanSubOptions = {
+                            6:[1,2,3,4,5,6,{7:[1,2]},8,9],
+                            7:[1,2,{3:[1,2]},4,5,{6:[1,3]},7],
+                            # 21:[3,5,6,7,8,9]
+                         }
         runOptions = []
         for menuOption in menuOptions:
             for indexOption in indexOptions:
@@ -306,6 +322,8 @@ class menus:
     ):
         tabLevel = 0
         self.menuDict = {}
+        line = 0
+        lineIndex = 1
         for key in rawDictionary:
             if skip is not None and key in skip:
                 continue
@@ -315,11 +333,25 @@ class menus:
             )
             if key in renderExceptionKeys:
                 m.isException = True
+                line += 2
+                lineIndex = 1
+                m.line = line
+                m.lineIndex = lineIndex
             elif str(key).isnumeric():
                 m.hasLeftSibling = False if tabLevel == 0 else True
+                if tabLevel == 0:
+                    line += 1
+                lineIndex = tabLevel + 1
+                m.line = line
+                m.lineIndex = lineIndex
                 tabLevel = tabLevel + 1
                 if tabLevel >= renderStyle.value:
                     tabLevel = 0
+            else:
+                line += 1
+                lineIndex = 1
+                m.line = line
+                m.lineIndex = lineIndex
             self.menuDict[str(key).upper()] = m
         return self
 
@@ -399,7 +431,7 @@ class menus:
             elif selectedMenu.level == 3:
                 self.level = 4
                 # next levelsub-menu of the selected sub-menu
-                if selectedMenu.parent.menuKey == "6" and selectedMenu.menuKey == "7":
+                if selectedMenu.parent.menuKey == "6" and selectedMenu.menuKey in ["7","10"]:
                     return self.renderLevel4_X_Lorenzian_Menus(
                         skip=skip,
                         asList=asList,
@@ -434,7 +466,7 @@ class menus:
     def renderLevel0Menus(self, asList=False, renderStyle=None, parent=None, skip=None):
         menuText = self.fromDictionary(
             level0MenuDict,
-            renderExceptionKeys=["T", "E", "U"],
+            renderExceptionKeys=["T", "E", "U", "Z", "L", "D"],
             renderStyle=renderStyle
             if renderStyle is not None
             else MenuRenderStyle.STANDALONE,
@@ -444,23 +476,28 @@ class menus:
         if asList:
             return menuText
         else:
-            print(
-                colorText.BOLD
-                + colorText.WARN
-                + "[+] Select a menu option:"
-                + colorText.END
-            )
-            print(
-                colorText.BOLD
-                + menuText
-                + """
+            if OutputControls().enableMultipleLineOutput:
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + colorText.WARN
+                    + "[+] Select a menu option:"
+                    + colorText.END
+                )
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + menuText
+                    + """
 
     Enter your choice > (default is """
-                + colorText.WARN
-                + self.find("X").keyTextLabel()
-                + ") "
-                "" + colorText.END
-            )
+                    + colorText.WARN
+                    + self.find("X").keyTextLabel()
+                    + ") "
+                    "" + colorText.END
+                )
+                try:
+                    OTAUpdater.checkForUpdate(VERSION, skipDownload=True)
+                except:
+                    pass
             return menuText
 
     def renderLevel1_S_Menus(
@@ -487,20 +524,21 @@ class menus:
         if asList:
             return menuText
         else:
-            print(
-                colorText.BOLD
-                + colorText.WARN
-                + "[+] Select a Strategy for Screening:"
-                + colorText.END
-            )
-            print(
-                colorText.BOLD
-                + menuText
-                + """
+            if OutputControls().enableMultipleLineOutput:
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + colorText.WARN
+                    + "[+] Select a Strategy for Screening:"
+                    + colorText.END
+                )
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + menuText
+                    + """
 
     Enter your choice > """
-                ""
-            )
+                    ""
+                )
             return menuText
         
     def renderLevel1_X_Menus(
@@ -518,23 +556,24 @@ class menus:
         if asList:
             return menuText
         else:
-            print(
-                colorText.BOLD
-                + colorText.WARN
-                + "[+] Select an Index for Screening:"
-                + colorText.END
-            )
-            print(
-                colorText.BOLD
-                + menuText
-                + """
+            if OutputControls().enableMultipleLineOutput:
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + colorText.WARN
+                    + "[+] Select an Index for Screening:"
+                    + colorText.END
+                )
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + menuText
+                    + """
 
     Enter your choice > (default is """
-                + colorText.WARN
-                + self.find(str(configManager.defaultIndex)).keyTextLabel()
-                + ")  "
-                "" + colorText.END
-            )
+                    + colorText.WARN
+                    + self.find(str(configManager.defaultIndex)).keyTextLabel()
+                    + ")  "
+                    "" + colorText.END
+                )
             return menuText
 
     def renderLevel2_X_Menus(
@@ -552,20 +591,21 @@ class menus:
         if asList:
             return menuText
         else:
-            print(
-                colorText.BOLD
-                + colorText.WARN
-                + "[+] Select a Criterion for Stock Screening: "
-                + colorText.END
-            )
-            print(
-                colorText.BOLD
-                + menuText
-                + """
+            if OutputControls().enableMultipleLineOutput:
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + colorText.WARN
+                    + "[+] Select a Criterion for Stock Screening: "
+                    + colorText.END
+                )
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + menuText
+                    + """
 
-        """
-                + colorText.END
-            )
+            """
+                    + colorText.END
+                )
             return menuText
 
     def renderLevel3_X_Reversal_Menus(
@@ -583,20 +623,21 @@ class menus:
         if asList:
             return menuText
         else:
-            print(
-                colorText.BOLD
-                + colorText.WARN
-                + "[+] Select an option: "
-                + colorText.END
-            )
-            print(
-                colorText.BOLD
-                + menuText
-                + """
+            if OutputControls().enableMultipleLineOutput:
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + colorText.WARN
+                    + "[+] Select an option: "
+                    + colorText.END
+                )
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + menuText
+                    + """
 
-        """
-                + colorText.END
-            )
+            """
+                    + colorText.END
+                )
             return menuText
 
     def renderLevel3_X_ChartPattern_Menus(
@@ -614,20 +655,21 @@ class menus:
         if asList:
             return menuText
         else:
-            print(
-                colorText.BOLD
-                + colorText.WARN
-                + "[+] Select an option: "
-                + colorText.END
-            )
-            print(
-                colorText.BOLD
-                + menuText
-                + """
+            if OutputControls().enableMultipleLineOutput:
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + colorText.WARN
+                    + "[+] Select an option: "
+                    + colorText.END
+                )
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + menuText
+                    + """
 
-        """
-                + colorText.END
-            )
+            """
+                    + colorText.END
+                )
             return menuText
 
     def renderLevel3_X_PopularStocks_Menus(
@@ -645,20 +687,21 @@ class menus:
         if asList:
             return menuText
         else:
-            print(
-                colorText.BOLD
-                + colorText.WARN
-                + "[+] Select an option: "
-                + colorText.END
-            )
-            print(
-                colorText.BOLD
-                + menuText
-                + """
+            if OutputControls().enableMultipleLineOutput:
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + colorText.WARN
+                    + "[+] Select an option: "
+                    + colorText.END
+                )
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + menuText
+                    + """
 
-        """
-                + colorText.END
-            )
+            """
+                    + colorText.END
+                )
             return menuText
 
     def renderLevel3_X_StockPerformance_Menus(
@@ -676,20 +719,21 @@ class menus:
         if asList:
             return menuText
         else:
-            print(
-                colorText.BOLD
-                + colorText.WARN
-                + "[+] Select an option: "
-                + colorText.END
-            )
-            print(
-                colorText.BOLD
-                + menuText
-                + """
+            if OutputControls().enableMultipleLineOutput:
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + colorText.WARN
+                    + "[+] Select an option: "
+                    + colorText.END
+                )
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + menuText
+                    + """
 
-        """
-                + colorText.END
-            )
+            """
+                    + colorText.END
+                )
             return menuText
 
     def renderLevel4_X_Lorenzian_Menus(
@@ -707,20 +751,21 @@ class menus:
         if asList:
             return menuText
         else:
-            print(
-                colorText.BOLD
-                + colorText.WARN
-                + "[+] Select an option: "
-                + colorText.END
-            )
-            print(
-                colorText.BOLD
-                + menuText
-                + """
+            if OutputControls().enableMultipleLineOutput:
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + colorText.WARN
+                    + "[+] Select an option: "
+                    + colorText.END
+                )
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + menuText
+                    + """
 
-        """
-                + colorText.END
-            )
+            """
+                    + colorText.END
+                )
             return menuText
 
 
@@ -739,20 +784,21 @@ class menus:
         if asList:
             return menuText
         else:
-            print(
-                colorText.BOLD
-                + colorText.WARN
-                + "[+] Select an option: "
-                + colorText.END
-            )
-            print(
-                colorText.BOLD
-                + menuText
-                + """
+            if OutputControls().enableMultipleLineOutput:
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + colorText.WARN
+                    + "[+] Select an option: "
+                    + colorText.END
+                )
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + menuText
+                    + """
 
-        """
-                + colorText.END
-            )
+            """
+                    + colorText.END
+                )
             return menuText
 
 
@@ -771,20 +817,21 @@ class menus:
         if asList:
             return menuText
         else:
-            print(
-                colorText.BOLD
-                + colorText.WARN
-                + "[+] Select an option: "
-                + colorText.END
-            )
-            print(
-                colorText.BOLD
-                + menuText
-                + """
+            if OutputControls().enableMultipleLineOutput:
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + colorText.WARN
+                    + "[+] Select an option: "
+                    + colorText.END
+                )
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + menuText
+                    + """
 
-        """
-                + colorText.END
-            )
+            """
+                    + colorText.END
+                )
             return menuText
         
 # Fundamentally good compnaies but nearing 52 week low

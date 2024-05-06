@@ -501,6 +501,7 @@ def triggerScanWorkflowActions(launchLocal=False, scanDaysInPast=0):
     # original_stdout = sys.stdout
     # original__stdout = sys.__stdout__
     commitFrequency = [21,34,55,89,144,200]
+    barometerTriggered = False
     for key in objectDictionary.keys():
         scanOptions = f'{objectDictionary[key]["td3"]}_D_D_D_D_D'
         branch = "main"
@@ -525,11 +526,27 @@ def triggerScanWorkflowActions(launchLocal=False, scanDaysInPast=0):
                 daysInPast -=1
             tryCommitOutcomes(options)
         else:
+            if not barometerTriggered and (PKDateUtilities.currentDateTime() < PKDateUtilities.currentDateTime(simulate=True,hour=9,minute=37)):
+                # Send the global market barometer trigger
+                barometerTriggered = True
+                resp = triggerRemoteScanAlertWorkflow("X:12 --barometer", branch)
+
+            # If the job got triggered before, let's wait until 9:37AM (3 min for job setup, so effectively it will be 9:40am)
+            while (PKDateUtilities.currentDateTime() < PKDateUtilities.currentDateTime(simulate=True,hour=9,minute=37)):
+                sleep(60) # Wait for 9:37AM
             resp = triggerRemoteScanAlertWorkflow(scanOptions, branch)
             if resp.status_code == 204:
                 sleep(5)
             else:
                 break
+    # Trigger the intraday analysis only in the 2nd half after it gets trigerred anytime after 3 PM IST
+    if PKDateUtilities.currentDateTime() >= PKDateUtilities.currentDateTime(simulate=True,hour=15,minute=00):
+        while (PKDateUtilities.currentDateTime() < PKDateUtilities.currentDateTime(simulate=True,hour=16,minute=15)):
+            print("Waiting for 4:15 PM IST...")
+            sleep(300) # Wait for 4:15 PM IST because the download data will take time and we need the downloaded data
+            # to be uploaded to actions-data-download folder on github before the intraday analysis can be run.
+        triggerRemoteScanAlertWorkflow("C:12: --runintradayanalysis -u -1001785195297", branch)
+
 
 def triggerRemoteScanAlertWorkflow(scanOptions, branch):
     cmd_options = scanOptions.replace("_",":")
@@ -835,6 +852,6 @@ if args.cleanuphistoricalscans:
     cleanuphistoricalscans(daysInPast)
 if args.updateholidays:
     updateHolidays()
-
+    
 print(f"{datetime.datetime.now(pytz.timezone('Asia/Kolkata'))}: All done!")
 sys.exit(0)

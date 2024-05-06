@@ -30,8 +30,9 @@ warnings.simplefilter("ignore", UserWarning,append=True)
 import argparse
 import builtins
 import logging
+import json
 import traceback
-
+import datetime
 # Keep module imports prior to classes
 import os
 import sys
@@ -47,22 +48,27 @@ except Exception:# pragma: no cover
     pass
 
 from time import sleep
+import time
 
 from PKDevTools.classes import log as log
 from PKDevTools.classes.ColorText import colorText
 from PKDevTools.classes.log import default_logger
 from PKDevTools.classes.PKDateUtilities import PKDateUtilities
 from pkscreener import Imports
+from PKDevTools.classes.OutputControls import OutputControls
+from pkscreener.classes.MarketMonitor import MarketMonitor
 import pkscreener.classes.ConfigManager as ConfigManager
 
-multiprocessing.freeze_support()
+if __name__ == '__main__':
+    multiprocessing.freeze_support()
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["AUTOGRAPH_VERBOSITY"] = "0"
-# from pkscreener.classes.IntradayMonitor import intradayMonitorInstance
 
 printenabled=False
 originalStdOut=None
 original__stdout=None
+cron_runs=0
+
 def decorator(func):
     def new_func(*args, **kwargs):
         if printenabled:
@@ -113,6 +119,18 @@ argParser.add_argument(
     required=False,
 )
 argParser.add_argument(
+    "--barometer",
+    action="store_true",
+    help="Send global market barometer to telegram channel or a user",
+    required=False,
+)
+argParser.add_argument(
+    "--bot",
+    action="store_true",
+    help="Run only in telegram bot mode",
+    required=False,
+)
+argParser.add_argument(
     "-c",
     "--croninterval",
     help="Pass interval in seconds to wait before the program is run again with same parameters",
@@ -146,7 +164,6 @@ argParser.add_argument(
 argParser.add_argument(
     "-m",
     "--monitor",
-    action="store_true",
     help="Monitor for intraday scanners and their results.",
     required=False,
 )
@@ -158,6 +175,11 @@ argParser.add_argument(
 argParser.add_argument(
     "--maxprice",
     help="Maximum Price for the stock to be considered.",
+    required=False,
+)
+argParser.add_argument(
+    "--minprice",
+    help="Minimum Price for the stock to be considered.",
     required=False,
 )
 argParser.add_argument(
@@ -180,10 +202,22 @@ argParser.add_argument(
     required=False,
 )
 argParser.add_argument(
+    "--simulate",
+    type=json.loads, # '{"isTrading":true,"currentDateTime":"2024-04-29 09:35:38"}'
+    help="Simulate various conditions",
+    required=False,
+)
+argParser.add_argument(
     "-t",
     "--testbuild",
     action="store_true",
     help="Run in test-build mode",
+    required=False,
+)
+argParser.add_argument(
+    "--telegram",
+    action="store_true",
+    help="Run with an assumption that this instance is launched via telegram bot",
     required=False,
 )
 argParser.add_argument(
@@ -202,9 +236,21 @@ argParser.add_argument(
 argParser.add_argument("-v", action="store_true")  # Dummy Arg for pytest -v
 argsv = argParser.parse_known_args()
 args = argsv[0]
-
+results = None
+resultStocks = None
+plainResults = None
+start_time = None
+dbTimestamp = None
+elapsed_time = None
 configManager = ConfigManager.tools()
 
+def removeMonitorFile():
+    from PKDevTools.classes import Archiver
+    filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs.txt")
+    try:
+        os.remove(filePath)
+    except:
+        pass
 
 def logFilePath():
     try:
@@ -230,9 +276,9 @@ def setupLogger(shouldLog=False, trace=False):
             os.remove(log_file_path)
         except Exception:# pragma: no cover
             pass
-    print(colorText.FAIL + "\n[+] Logs will be written to:"+colorText.END)
-    print(colorText.GREEN + f"[+] {log_file_path}"+colorText.END)
-    print(colorText.FAIL + "[+] If you need to share, open this folder, copy and zip the log file to share.\n" + colorText.END)
+    OutputControls().printOutput(colorText.FAIL + "\n[+] Logs will be written to:"+colorText.END)
+    OutputControls().printOutput(colorText.GREEN + f"[+] {log_file_path}"+colorText.END)
+    OutputControls().printOutput(colorText.FAIL + "[+] If you need to share, open this folder, copy and zip the log file to share.\n" + colorText.END)
     # logger = multiprocessing.log_to_stderr(log.logging.DEBUG)
     log.setup_custom_logger(
         "pkscreener",
@@ -245,7 +291,7 @@ def setupLogger(shouldLog=False, trace=False):
 
 def warnAboutDependencies():
     if not Imports["talib"]:
-        print(
+        OutputControls().printOutput(
                 colorText.BOLD
                 + colorText.FAIL
                 + "[+] TA-Lib is not installed. Looking for pandas_ta."
@@ -253,7 +299,7 @@ def warnAboutDependencies():
             )
         sleep(1)
         if Imports["pandas_ta"]:
-            print(
+            OutputControls().printOutput(
                 colorText.BOLD
                 + colorText.GREEN
                 + "[+] Found and falling back on pandas_ta.\n[+] For full coverage(candle patterns), you may wish to read the README file in PKScreener repo : https://github.com/pkjmesra/PKScreener \n[+] or follow instructions from\n[+] https://github.com/ta-lib/ta-lib-python"
@@ -261,7 +307,7 @@ def warnAboutDependencies():
             )
             sleep(1)
         else:
-            print(
+            OutputControls().printOutput(
                 colorText.BOLD
                 + colorText.FAIL
                 + "[+] Neither ta-lib nor pandas_ta was located. You need at least one of them to continue! \n[+] Please follow instructions from README file under PKScreener repo: https://github.com/pkjmesra/PKScreener"
@@ -270,7 +316,7 @@ def warnAboutDependencies():
             input("Press any key to try anyway...")
 
 def runApplication():
-    from pkscreener.globals import main
+    from pkscreener.globals import main, sendQuickScanResult,sendMessageToTelegramChannel, sendGlobalMarketBarometer, updateMenuChoiceHierarchy, isInterrupted, refreshStockData, closeWorkersAndExit
     # From a previous call to main with args, it may have been mutated.
     # Let's stock to the original args passed by user
     argsv = argParser.parse_known_args()
@@ -279,23 +325,154 @@ def runApplication():
         from pkscreener.classes.MenuOptions import menus
         runOptions = menus.allMenus(topLevel="C", index=12)
         optionalFinalOutcome_df = None
+        import pkscreener.classes.Utility as Utility
+        import pandas as pd
+        # Delete any existing data from the previous run.
+        configManager.deleteFileWithPattern(pattern="stock_data_*.pkl")
         for runOption in runOptions:
             args.options = runOption
             try:
-                optionalFinalOutcome_df = main(userArgs=args,optionalFinalOutcome_df=optionalFinalOutcome_df)
+                optionalFinalOutcome_df,_ = main(userArgs=args,optionalFinalOutcome_df=optionalFinalOutcome_df)
+                if "EoDDiff" not in optionalFinalOutcome_df.columns:
+                    # Somehow the file must have been corrupted. Let's re-download
+                    configManager.deleteFileWithPattern(pattern="stock_data_*.pkl")
+                    configManager.deleteFileWithPattern(pattern="intraday_stock_data_*.pkl")
+                if isInterrupted():
+                    break
             except Exception as e:
-                print(e)
+                OutputControls().printOutput(e)
                 if args.log:
-                    import traceback
                     traceback.print_exc()
         if optionalFinalOutcome_df is not None:
+            final_df = None
+            optionalFinalOutcome_df.drop('FairValue', axis=1, inplace=True, errors="ignore")
             df_grouped = optionalFinalOutcome_df.groupby("Stock")
             for stock, df_group in df_grouped:
                 if stock == "PORTFOLIO":
-                    print(df_group)
+                    if final_df is None:
+                        final_df = df_group[["Pattern","LTP","SqrOffLTP","SqrOffDiff","EoDLTP","EoDDiff","DayHigh","DayHighDiff","%Chng"]]
+                    else:
+                        final_df = pd.concat([final_df, df_group[["Pattern","LTP","SqrOffLTP","SqrOffDiff","EoDLTP","EoDDiff","DayHigh","DayHighDiff","%Chng"]]], axis=0)
+            final_df.rename(
+                columns={
+                    "LTP": "Morning Portfolio",
+                    "SqrOffLTP": "SqrOff Portfolio",
+                    "EoDLTP": "EoD Portfolio",
+                    "%Chng": "EoD %Chng",
+                    },
+                    inplace=True,
+                )
+            mark_down = colorText.miniTabulator().tabulate(
+                                final_df,
+                                headers="keys",
+                                tablefmt=colorText.No_Pad_GridFormat,
+                                showindex = False
+                            ).encode("utf-8").decode(Utility.STD_ENCODING)
+            OutputControls().printOutput(mark_down)
+            sendQuickScanResult(menuChoiceHierarchy="IntradayAnalysis",
+                                user="-1001785195297",
+                                tabulated_results=mark_down,
+                                markdown_results=mark_down,
+                                caption="IntradayAnalysis - Morning alert vs Market Close",
+                                pngName= f"PKS_IA_{PKDateUtilities.currentDateTime().strftime('%Y-%m-%d_%H:%M:%S')}",
+                                pngExtension= ".png"
+                                )
     else:
-        main(userArgs=args)
+        if args.barometer:
+            sendGlobalMarketBarometer(userArgs=args)
+        else:
+            global results, resultStocks, plainResults, dbTimestamp, elapsed_time, start_time
+            monitorOption_org = ""
+            # args.monitor = configManager.defaultMonitorOptions
+            if args.monitor:
+                args.answerdefault = args.answerdefault or 'Y'
+                if MarketMonitor().monitorIndex == 0:
+                    dbTimestamp = PKDateUtilities.currentDateTime().strftime("%H:%M:%S")
+                    elapsed_time = 0
+                    if start_time is None:
+                        start_time = time.time()
+                    else:
+                        elapsed_time = round(time.time() - start_time,2)
+                        start_time = time.time()
+                monitorOption_org = MarketMonitor().currentMonitorOption()
+                monitorOption = monitorOption_org
+                lastComponent = monitorOption.split(":")[-1]
+                # previousCandleDuration = configManager.duration
+                if "i" in lastComponent:
+                    # We need to switch to intraday scan
+                    monitorOption = monitorOption.replace(lastComponent,"")
+                    args.intraday = lastComponent.replace("i","").strip()
+                    configManager.toggleConfig(candleDuration=args.intraday, clearCache=False)
+                else:
+                    # We need to switch to daily scan
+                    args.intraday = None
+                    configManager.toggleConfig(candleDuration='1d', clearCache=False)
+                if monitorOption.startswith("|"):
+                    monitorOption = monitorOption.replace("|","")
+                    # We need to pipe the output from previous run into the next one
+                    if resultStocks is not None:
+                        resultStocks = ",".join(resultStocks)
+                        monitorOption = f"{monitorOption}:{resultStocks}"
+                args.options = monitorOption.replace("::",":")
+                # (previousCandleDuration != configManager.duration) or 
+                if (MarketMonitor().monitorIndex == 1 and args.options is not None and plainResults is not None):
+                    # Load the stock data afresh for each cycle
+                    refreshStockData(args.options)
+            try: 
+                results = None
+                plainResults = None
+                resultStocks = None
+                results, plainResults = main(userArgs=args)
+                if isInterrupted():
+                    closeWorkersAndExit()
+                    removeMonitorFile()
+                    sys.exit(0)
+                while pipeResults(plainResults,args):
+                    results, plainResults = main(userArgs=args)
+            except SystemExit:
+                closeWorkersAndExit()
+                removeMonitorFile()
+                sys.exit(0)
+            except Exception as e:
+                default_logger().debug(e, exc_info=True)
+                # Probably user cancelled an operation by choosing a cancel sub-menu somewhere
+                pass
+            if plainResults is not None and not plainResults.empty:
+                plainResults = plainResults[~plainResults.index.duplicated(keep='first')]
+                results = results[~results.index.duplicated(keep='first')]
+                resultStocks = plainResults.index
+            if results is not None and args.monitor and len(monitorOption_org) > 0:
+                MarketMonitor().refresh(screen_df=results,screenOptions=monitorOption_org, chosenMenu=updateMenuChoiceHierarchy(),dbTimestamp=f"{dbTimestamp} | CycleTime:{elapsed_time}s",telegram=args.telegram)
 
+
+def pipeResults(prevOutput,args):
+    nextOnes = args.options.split(";")
+    if len(nextOnes) > 1:
+        monitorOption = nextOnes[1]
+        if len(monitorOption) == 0:
+            return False
+        lastComponent = monitorOption.split(":")[-1]
+        if "i" in lastComponent:
+            # We need to switch to intraday scan
+            monitorOption = monitorOption.replace(lastComponent,"")
+            args.intraday = lastComponent.replace("i","").strip()
+            configManager.toggleConfig(candleDuration=args.intraday, clearCache=False)
+        else:
+            # We need to switch to daily scan
+            args.intraday = None
+            configManager.toggleConfig(candleDuration='1d', clearCache=False)
+        if monitorOption.startswith("|"):
+            monitorOption = monitorOption.replace("|","")
+            # We need to pipe the output from previous run into the next one
+            if prevOutput is not None and not prevOutput.empty:
+                prevOutput_results = prevOutput[~prevOutput.index.duplicated(keep='first')]
+                prevOutput_results = prevOutput_results.index
+                prevOutput_results = ",".join(prevOutput_results)
+                monitorOption = f"{monitorOption}:{prevOutput_results}"
+        args.options = monitorOption.replace("::",":")
+        args.options = args.options + ":D:;".join(nextOnes[2:])
+        return True
+    return False
 
 def pkscreenercli():
     global originalStdOut
@@ -304,14 +481,20 @@ def pkscreenercli():
             multiprocessing.set_start_method("fork")
         except RuntimeError as e:# pragma: no cover
             if "RUNNER" not in os.environ.keys() and ('PKDevTools_Default_Log_Level' in os.environ.keys() and os.environ["PKDevTools_Default_Log_Level"] != str(log.logging.NOTSET)):
-                print(
+                OutputControls().printOutput(
                     "[+] RuntimeError with 'multiprocessing'.\n[+] Please contact the Developer, if this does not work!"
                 )
-                print(e)
+                OutputControls().printOutput(e)
                 traceback.print_exc()
             pass
+
+    OutputControls(enableMultipleLineOutput=(args.monitor is None)).printOutput("",end="\r")
+        
     configManager.getConfig(ConfigManager.parser)
     # configManager.restartRequestsCache()
+    # args.monitor = configManager.defaultMonitorOptions
+    if args.monitor is not None:
+        MarketMonitor(monitors=args.monitor.split(",") if len(args.monitor)>5 else configManager.defaultMonitorOptions.split(","),maxNumResultsPerRow=configManager.maxDashboardWidgetsPerRow)
 
     if args.log or configManager.logsEnabled:
         setupLogger(shouldLog=True, trace=args.testbuild)
@@ -321,6 +504,10 @@ def pkscreenercli():
         if "PKDevTools_Default_Log_Level" in os.environ.keys():
             del os.environ['PKDevTools_Default_Log_Level']
             # os.environ["PKDevTools_Default_Log_Level"] = str(log.logging.NOTSET)
+    if args.simulate:
+        os.environ["simulation"] = json.dumps(args.simulate)
+    elif "simulation" in os.environ.keys():
+        del os.environ['simulation']
     # Import other dependency here because if we import them at the top
     # multiprocessing behaves in unpredictable ways
     import pkscreener.classes.Utility as Utility
@@ -329,7 +516,7 @@ def pkscreenercli():
     if originalStdOut is None:
         # Clear only if this is the first time it's being called from some
         # loop within workflowtriggers.
-        Utility.tools.clearScreen(userArgs=args)
+        Utility.tools.clearScreen(userArgs=args, clearAlways=True)
     warnAboutDependencies()
     if args.prodbuild:
         disableSysOut()
@@ -338,11 +525,27 @@ def pkscreenercli():
         configManager.setConfig(
             ConfigManager.parser, default=True, showFileCreatedText=False
         )
-    if args.monitor:
-        Utility.tools.clearScreen()
-        print("Not Implemented Yet!")
-        # intradayMonitorInstance.monitor()
-        sys.exit(0)
+    if args.telegram:
+        # Launched by bot for intraday monitor?
+        if (PKDateUtilities.isTradingTime() and not PKDateUtilities.isTodayHoliday()[0]) or ("PKDevTools_Default_Log_Level" in os.environ.keys()):
+            from PKDevTools.classes import Archiver
+            filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs.txt")
+            if os.path.exists(filePath):
+                default_logger().info("monitor_outputs.txt already exists! This means an instance may already be running. Exiting now...")
+                # Since the file exists, it means, there is another instance running
+                sys.exit(0)
+            import atexit
+            atexit.register(removeMonitorFile)
+        else:
+            # It should have been launched only during the trading hours
+            default_logger().info("--telegram option must be launched ONLY during NSE trading hours. Exiting now...")
+            sys.exit(0)
+    # Check and see if we're running only the telegram bot
+    if args.bot:
+        from pkscreener import pkscreenerbot
+        pkscreenerbot.runpkscreenerbot()
+        return
+    
     if args.intraday:
         configManager.toggleConfig(candleDuration=args.intraday, clearCache=False)
     else:
@@ -354,8 +557,11 @@ def pkscreenercli():
     if args.maxprice:
         configManager.maxLTP = args.maxprice
         configManager.setConfig(ConfigManager.parser, default=True, showFileCreatedText=False)
+    if args.minprice:
+        configManager.minLTP = args.minprice
+        configManager.setConfig(ConfigManager.parser, default=True, showFileCreatedText=False)
     if args.testbuild and not args.prodbuild:
-        print(
+        OutputControls().printOutput(
             colorText.BOLD
             + colorText.FAIL
             + "[+] Started in TestBuild mode!"
@@ -363,7 +569,7 @@ def pkscreenercli():
         )
         runApplication()
     elif args.download:
-        print(
+        OutputControls().printOutput(
             colorText.BOLD
             + colorText.FAIL
             + "[+] Download ONLY mode! Stocks will not be screened!"
@@ -372,6 +578,9 @@ def pkscreenercli():
         if args.intraday is None:
             configManager.toggleConfig(candleDuration="1d", clearCache=False)
         runApplication()
+        from pkscreener.globals import closeWorkersAndExit
+        closeWorkersAndExit()
+        removeMonitorFile()
         sys.exit(0)
     else:
         runApplicationForScreening()
@@ -383,9 +592,10 @@ def runLoopOnScheduleOrStdApplication(hasCronInterval):
         runApplication()
 
 def runApplicationForScreening():
+    from pkscreener.globals import closeWorkersAndExit
     try:
-        shouldBreak = args.exit or args.user is not None or args.testbuild
         hasCronInterval = args.croninterval is not None and str(args.croninterval).isnumeric()
+        shouldBreak = (args.exit and not hasCronInterval)or args.user is not None or args.testbuild
         runLoopOnScheduleOrStdApplication(hasCronInterval)
         while True:
             if shouldBreak:
@@ -394,12 +604,18 @@ def runApplicationForScreening():
         if args.v:
             disableSysOut(disable=False)
             return
+        closeWorkersAndExit()
+        removeMonitorFile()
+        sys.exit(0)
+    except SystemExit:
+        closeWorkersAndExit()
+        removeMonitorFile()
         sys.exit(0)
     except (RuntimeError, Exception) as e:  # pragma: no cover
         default_logger().debug(e, exc_info=True)
         if args.prodbuild:
             disableSysOut(disable=False)
-        print(
+        OutputControls().printOutput(
             f"{e}\n[+] An error occurred! Please run with '-l' option to collect the logs.\n[+] For example, 'pkscreener -l' and then contact the developer!"
         )
         if "RUNNER" in os.environ.keys() or ('PKDevTools_Default_Log_Level' in os.environ.keys() and os.environ["PKDevTools_Default_Log_Level"] != str(log.logging.NOTSET)):
@@ -407,13 +623,15 @@ def runApplicationForScreening():
         if args.v:
             disableSysOut(disable=False)
             return
+        closeWorkersAndExit()
+        removeMonitorFile()
         sys.exit(0)
 
 
 def scheduleNextRun():
     sleepUntilNextExecution = not PKDateUtilities.isTradingTime()
     while sleepUntilNextExecution:
-        print(
+        OutputControls().printOutput(
             colorText.BOLD
             + colorText.FAIL
             + (
@@ -440,14 +658,19 @@ def scheduleNextRun():
         ):
             sleepUntilNextExecution = False
         sleep(int(args.croninterval))
-    print(
-        colorText.BOLD + colorText.GREEN + "=> Going to fetch again!" + colorText.END,
-        end="\r",
-        flush=True,
-    )
-    sleep(3)
+    global cron_runs
+    if cron_runs > 0:
+        OutputControls().printOutput(
+            colorText.BOLD + colorText.GREEN + f'=> Going to fetch again in {int(args.croninterval)} sec. at {(PKDateUtilities.currentDateTime() + datetime.timedelta(seconds=120)).strftime("%Y-%m-%d %H:%M:%S")} IST...' + colorText.END,
+            end="\r",
+            flush=True,
+        )
+        sleep(int(args.croninterval) if not args.testbuild else 3)
     runApplication()
-
+    cron_runs += 1
 
 if __name__ == "__main__":
-    pkscreenercli()
+    try:
+        pkscreenercli()
+    except KeyboardInterrupt:
+        sys.exit(0)

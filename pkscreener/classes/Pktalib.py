@@ -35,11 +35,35 @@ from PKDevTools.classes.ColorText import colorText
 from pkscreener import Imports
 
 if Imports["talib"]:
-    import talib
+    try:
+        import talib
+    except:
+        print(
+                colorText.BOLD
+                + colorText.FAIL
+                + "[+] 'TA-Lib' library is not installed. For best results, please install 'TA-Lib'! You may wish to follow instructions from\n[+] https://github.com/pkjmesra/PKScreener/"
+                + colorText.END
+            )
+        try:
+            import pandas_ta as talib
+            print(
+                colorText.BOLD
+                + colorText.FAIL
+                + "[+] TA-Lib is not installed. Falling back on pandas_ta.\n[+] For full coverage(candle patterns), you may wish to follow instructions from\n[+] https://github.com/ta-lib/ta-lib-python"
+                + colorText.END
+            )
+        except:
+            print(
+                colorText.BOLD
+                + colorText.FAIL
+                + "[+] pandas_ta is not installed. Falling back on pandas_ta also failed.\n[+] For full coverage(candle patterns), you may wish to follow instructions from\n[+] https://github.com/ta-lib/ta-lib-python"
+                + colorText.END
+            )
+            pass
+        pass
 else:
     try:
         import pandas_ta as talib
-
         print(
             colorText.BOLD
             + colorText.FAIL
@@ -119,6 +143,7 @@ class pktalib:
     @classmethod
     def MACD(self, close, fast, slow, signal):
         try:
+            # import pandas_ta as talib
             return talib.macd(close, fast, slow, signal, talib=Imports["talib"])
         except Exception:  # pragma: no cover
             # default_logger().debug(e, exc_info=True)
@@ -155,6 +180,16 @@ class pktalib:
             }
             return pd.DataFrame(data)
 
+    @classmethod
+    def STOCHF(self, high, low, close, fastk_period, fastd_period, fastd_matype):
+        fastk, fastd = talib.STOCHF(high,
+                            low,
+                            close,
+                            fastk_period, 
+                            fastd_period,
+                            fastd_matype)
+        return fastk, fastd
+    
     @classmethod
     def STOCHRSI(self, close, timeperiod, fastk_period, fastd_period, fastd_matype):
         try:
