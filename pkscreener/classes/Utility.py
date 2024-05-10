@@ -92,7 +92,7 @@ def marketStatus():
         lngStatus = MarketStatus().getMarketStatus(exchangeSymbol="^IXIC" if configManager.defaultIndex == 15 else "^NSEI")
     return (lngStatus +"\n") if lngStatus is not None else "\n"
 
-art = colorText.GREEN + artText + colorText.END + f" | {marketStatus()}"
+art = colorText.GREEN + f"{getArtText()}\nv{VERSION}" + colorText.END + f" | {marketStatus()}"
 
 lastScreened = os.path.join(
     Archiver.get_user_outputs_dir(), "last_screened_results.pkl"
@@ -101,7 +101,7 @@ lastScreened = os.path.join(
 # Class for managing misc and utility methods
 
 class tools:
-    def clearScreen(userArgs=None,clearAlways=False):
+    def clearScreen(userArgs=None,clearAlways=False,forceTop=False):
         if "RUNNER" in os.environ.keys() or (userArgs is not None and userArgs.prodbuild):
             if userArgs is not None and userArgs.v:
                 os.environ["RUNNER"]="LOCAL_RUN_SCANNER"
@@ -114,18 +114,27 @@ class tools:
                     os.system('color 0f') # sets the background to black with white forerground
                 except:
                     pass
-                os.system("cls")
+                if clearAlways:
+                    os.system("cls")
             elif "Darwin" in platform.system():
-                os.system("clear")
+                if clearAlways:
+                    os.system("clear")
+                # default_logger().debug("Darwin does not work for setting background")
             else:
                 try:
                     os.system('setterm -background black -foreground white -store')
                 except:
                     pass
-                os.system("clear")
+                if clearAlways:
+                    os.system("clear")
+            OutputControls().moveCursorToStartPosition()
         try:
+            if forceTop and OutputControls().lines == 0:
+                OutputControls().lines = 9
+                OutputControls().moveCursorToStartPosition()
+                
             if clearAlways or OutputControls().enableMultipleLineOutput:
-                art = colorText.GREEN + artText + colorText.END + f" | {marketStatus()}"
+                art = colorText.GREEN + f"{getArtText()}\nv{VERSION}" + colorText.END + f" | {marketStatus()}"
                 OutputControls().printOutput(art.encode('utf-8').decode(STD_ENCODING), enableMultipleLineOutput=True)
         except Exception as e:# pragma: no cover
             default_logger().debug(e, exc_info=True)
@@ -279,7 +288,7 @@ class tools:
     def formatRatio(ratio, volumeRatio):
         if ratio >= volumeRatio and ratio != np.nan and (not math.isinf(ratio)):
             return colorText.BOLD + colorText.GREEN + str(ratio) + "x" + colorText.END
-        return colorText.BOLD + colorText.FAIL + str(ratio) + "x" + colorText.END
+        return colorText.BOLD + colorText.FAIL + (f"{ratio}x" if pd.notna(ratio) else "") + colorText.END
 
     def addQuickWatermark(sourceImage:Image, xVertical=None, dataSrc="", dataSrcFontSize=10):
         width, height = sourceImage.size
@@ -638,6 +647,7 @@ class tools:
                     colPixelRunValue += col_width_sep + 1
                 style = "red" if not red else gridColor
                 red = not red
+                lineitem = lineitem.replace(": ","***: ")
                 draw.text(
                     (colPixelRunValue, rowPixelRunValue),
                     lineitem,
@@ -675,10 +685,10 @@ class tools:
         return legendText
 
     def getDefaultColors():
-        artColors = ["blue", "violet", "green", "red", "yellow","orange","indigo"]
+        artColors = ["blue", "indigo", "green", "red", "yellow","orange","violet"]
         bgColor = "white" if PKDateUtilities.currentDateTime().day % 2 == 0 else "black"
         gridColor = "black" if bgColor == "white" else "white"
-        artColor = random.choice(artColors[3:]) if bgColor == "black" else random.choice(artColors[:4])
+        artColor = random.choice(artColors[3:]) if bgColor == "black" else random.choice(artColors[:3])
         menuColor = "red"
         return bgColor,gridColor,artColor,menuColor
 
@@ -695,27 +705,27 @@ class tools:
         return fontPath
 
     def getLegendHelpText(table,backtestSummary):
-        legendText = "\n*** 1. Stock ***: This is the NSE symbol/ticker for a company. Stocks that are NOT stage two, are coloured red. *** 2. Consol. ***: It shows the price range in which stock is trading for the last 22 trading sessions(22 trading sessions per month) *** 3. Breakout(22Prds) ***: The BO is Breakout level based on last 22 sessions. R is the resistance level (if available)."
-        legendText = f"{legendText} An investor should consider both BO & R level to analyse entry / exits in their trading lessons. If the BO value is green, it means the stock has already broken out (is above BO level). If BO is in red, it means the stock is yet to break out.  *** 4. LTP ***: This is the last/latest trading/closing price of the given stock on a given date at NSE. The LTP in green/red means the"
-        legendText = f"{legendText} stock price has increased / decreased since last trading session. (1.5%, 1.3%,1.8%) with LTP shows the stock price rose by 1.5%, 1.3% and 1.8% in the last 1, 2 and 3 trading sessions respectively. *** 5. %Chng ***: This is the change(rise/fall in percentage) in closing/trading price from the previous trading session's closing price. Green means that price rose from the previous"
-        legendText = f"{legendText} trading session. Red means it fell.  *** 6. Volume ***: This shows the relative volume in the most recent trading day /today with respect to last 20 trading periods moving average of Volume. For example, 8.5x would mean today's volume so far is 8.5 times the average volume traded in the last 20 trading sessions. Volume in green means that volume for the date so far has been at"
-        legendText = f"{legendText} least 2.5 times more than the average volume of last 20 sessions. If the volume is in red, it means the given date's volume is less than 2.5 times the avg volume of the last 20 sessions. *** 7. MA-Signal ***: It shows the price trend of the given stock by analyzing various 50-200 moving/exponential averages crossover strategies. Perform a Google search for the shown MA-Signals"
-        legendText = f"{legendText} to learn about them more. If it is in green, the signal is bullish. Red means bearish. *** 8. RSI or RSI/i***: Relative Strength Index is a momentum index which describes 14-period relative strength at the given price. Generally, below 30 is considered oversold and above 80 is considered overbought. When RSI/i has value, say, 80/41, it means that the daily RSI value is 80 while"
-        legendText = f"{legendText} the 1-minute intraday RSI is 41. *** 9. Trend(22Prds) ***:  This describes the average trendline computed based on the last 22 trading sessions. Their strength is displayed depending on the steepness of the trendlines. (Strong / Weak) Up / Down shows how high/low the demand is respectively. A Sideways trend is the horizontal price movement that occurs when the forces of supply"
+        legendText = "\n***1.Stock***: This is the NSE symbol/ticker for a company. Stocks that are NOT stage two, are coloured red.***2.Consol.***: It shows the price range in which stock is trading for the last 22 trading sessions(22 trading sessions per month)***3.Breakout(22Prds)***: The BO is Breakout level based on last 22 sessions. R is the resistance level (if available)."
+        legendText = f"{legendText} An investor should consider both BO & R level to analyse entry / exits in their trading lessons. If the BO value is green, it means the stock has already broken out (is above BO level). If BO is in red, it means the stock is yet to break out.***4.LTP***: This is the last/latest trading/closing price of the given stock on a given date at NSE. The LTP in green/red means the"
+        legendText = f"{legendText} stock price has increased / decreased since last trading session. (1.5%, 1.3%,1.8%) with LTP shows the stock price rose by 1.5%, 1.3% and 1.8% in the last 1, 2 and 3 trading sessions respectively.***5.%Chng***: This is the change(rise/fall in percentage) in closing/trading price from the previous trading session's closing price. Green means that price rose from the previous"
+        legendText = f"{legendText} trading session. Red means it fell.***6.Volume***: This shows the relative volume in the most recent trading day /today with respect to last 20 trading periods moving average of Volume. For example, 8.5x would mean today's volume so far is 8.5 times the average volume traded in the last 20 trading sessions. Volume in green means that volume for the date so far has been at"
+        legendText = f"{legendText} least 2.5 times more than the average volume of last 20 sessions. If the volume is in red, it means the given date's volume is less than 2.5 times the avg volume of the last 20 sessions.***7.MA-Signal***: It shows the price trend of the given stock by analyzing various 50-200 moving/exponential averages crossover strategies. Perform a Google search for the shown MA-Signals"
+        legendText = f"{legendText} to learn about them more. If it is in green, the signal is bullish. Red means bearish.***8.RSI-or-RSI/i***: Relative Strength Index is a momentum index which describes 14-period relative strength at the given price. Generally, below 30 is considered oversold and above 80 is considered overbought. When RSI/i has value, say, 80/41, it means that the daily RSI value is 80 while"
+        legendText = f"{legendText} the 1-minute intraday RSI is 41.***9.Trend(22Prds)***:  This describes the average trendline computed based on the last 22 trading sessions. Their strength is displayed depending on the steepness of the trendlines. (Strong / Weak) Up / Down shows how high/low the demand is respectively. A Sideways trend is the horizontal price movement that occurs when the forces of supply"
         legendText = f"{legendText} and demand are nearly equal. T:▲ or T:▼ shows the general moving average uptrend/downtrend from a 200 day MA perspective"
         legendText = f"{legendText} if the current 200DMA is more/less than the last 20/80/100 days' 200DMA. Similarly, t:▲ or t:▼ shows for 50DMA based on 9/14/20 days' 50DMA trend. MFI:▲ or MFI:▼ shows"
-        legendText = f"{legendText} if the overall top 5 mutual funds and top 5 institutional investors ownership went up or down on the closing of the last month. *** 10. Pattern ***:This shows if the chart or the candle (from the candlestick chart) is"
-        legendText = f"{legendText} forming any known pattern in the recent timeframe or as per the selected screening options. Do a google search for the shown pattern names to learn. *** 11. CCI ***: The Commodity Channel Index (CCI) is a technical indicator that measures the difference between the current price and the historical average price of the given stock. Generally below '- 100' is considered oversold"
-        legendText = f"{legendText} and above 100 is considered overbought. If the CCI is < '-100' or CCI is > 100 and the Trend(22Prds) is Strong/Weak Up, it is shown in green. Otherwise it's in red. *** 12. 1-Pd/2-Pd etc. ***: 60.29% of (413) under 1-Pd in green shows that the given scan option was correct 60.23% of the times for 413 stocks that scanner found in the last 22 trading sessions under the same scan"
+        legendText = f"{legendText} if the overall top 5 mutual funds and top 5 institutional investors ownership went up or down on the closing of the last month.***10.Pattern***:This shows if the chart or the candle (from the candlestick chart) is"
+        legendText = f"{legendText} forming any known pattern in the recent timeframe or as per the selected screening options. Do a google search for the shown pattern names to learn.***11.CCI***: The Commodity Channel Index (CCI) is a technical indicator that measures the difference between the current price and the historical average price of the given stock. Generally below '- 100' is considered oversold"
+        legendText = f"{legendText} and above 100 is considered overbought. If the CCI is < '-100' or CCI is > 100 and the Trend(22Prds) is Strong/Weak Up, it is shown in green. Otherwise it's in red.***12.1-Pd/2-Pd-etc.***: 60.29% of (413) under 1-Pd in green shows that the given scan option was correct 60.23% of the times for 413 stocks that scanner found in the last 22 trading sessions under the same scan"
         legendText = f"{legendText} options. Similarly, 61.69 % of (154) in green under 22-Pd, means we found that 61.56% of 154 stocks (~95 stocks) prices found under the same scan options increased in 22 trading periods. 57.87% of (2661) under 'Overall' means that over the last 22 trading sessions we found 2661 stock instances under the same scanning options (for example, Momentum Gainers), out of which 57.87%"
-        legendText = f"{legendText} of the stock prices increased in one or more of the last 1 or 2 or 3 or 4 or 5 or 10 or 22 or 22 trading sessions. If you want to see by what percent the prices increased, you should see the details. *** 13. 1 to 30 period gain/loss % ***: 4.17% under 1-Pd in green in the gain/loss table/grid means the stock price increased by 4.17% in the next 1 trading session. If this is in"
-        legendText = f"{legendText} red, example, -5.67%, it means the price actually decreased by 5.67%. Gains are in green and losses are in red in this grid. The Date column has the date(s) on which that specific stock was found under the chosen scan options in the past 22 trading sessions. *** 14. 52Wk H/L ***: These have 52 weeks high/low prices and will be shown in red, green or yellow based on how close the"
-        legendText = f"{legendText} price is to the 52 wk high/low value.If the 52 week high/low value is within 10% of LTP:Yellow, LTP is above 52 week high:Green. If the LTP is below 90% of 52 week high:Red.*** 15. 1-Pd-% ***: Shows the 1 period gain in percent from the given date. Similarly 2-Pd-%, 3-Pd-% etc shows 2 day, 3 days gain etc. *** 16. 1-Pd-10k ***: Shows 1 period/day portfolio value if you would"
-        legendText = f"{legendText} have invested 10,000 on the given date. *** 17. [T][_trend_] ***: [T] is for Trends followed by the trend name in the filter. *** 18. [BO] ***: This Shows the Breakout filter value from the backtest reports and will be available only if 'showpaststrategydata' configuration is turned on. *** 19. [P] ***: [P] shows pattern name. *** 20. MFI ***: Top 5 Mutual fund ownership and "
-        legendText = f"{legendText} top 5 Institutional investor ownership status as on the last day of the last month, based on analysis from Morningstar. *** 21. FairValue ***: Morningstar Fair value of a given stock as of last trading day as determined by 3rd party analysis based on fundamentals. *** 22. MCapWt% ***: This shows the market-cap weighted portfolio weight to consider investing.\n"
+        legendText = f"{legendText} of the stock prices increased in one or more of the last 1 or 2 or 3 or 4 or 5 or 10 or 22 or 22 trading sessions. If you want to see by what percent the prices increased, you should see the details.***13.1-to-30-period-gain/loss%***: 4.17% under 1-Pd in green in the gain/loss table/grid means the stock price increased by 4.17% in the next 1 trading session. If this is in"
+        legendText = f"{legendText} red, example, -5.67%, it means the price actually decreased by 5.67%. Gains are in green and losses are in red in this grid. The Date column has the date(s) on which that specific stock was found under the chosen scan options in the past 22 trading sessions.***14.52Wk-H/L***: These have 52 weeks high/low prices and will be shown in red, green or yellow based on how close the"
+        legendText = f"{legendText} price is to the 52 wk high/low value.If the 52 week high/low value is within 10% of LTP:Yellow, LTP is above 52 week high:Green. If the LTP is below 90% of 52 week high:Red.***15.1-Pd-%***: Shows the 1 period gain in percent from the given date. Similarly 2-Pd-%, 3-Pd-% etc shows 2 day, 3 days gain etc.***16.1-Pd-10k***: Shows 1 period/day portfolio value if you would"
+        legendText = f"{legendText} have invested 10,000 on the given date.***17.[T][_trend_]***: [T] is for Trends followed by the trend name in the filter.***18.[BO]***: This Shows the Breakout filter value from the backtest reports and will be available only if 'showpaststrategydata' configuration is turned on.***19.[P]***: [P] shows pattern name.***20.MFI***: Top 5 Mutual fund ownership and "
+        legendText = f"{legendText} top 5 Institutional investor ownership status as on the last day of the last month, based on analysis from Morningstar.***21.FairValue***: Morningstar Fair value of a given stock as of last trading day as determined by 3rd party analysis based on fundamentals.***22.MCapWt%***: This shows the market-cap weighted portfolio weight to consider investing.\n"
         legendText = tools.wrapFitLegendText(table,backtestSummary, legendText)
         # legendText = legendText.replace("***:", colorText.END + colorText.WHITE)
-        # legendText = legendText.replace("*** ", colorText.END + colorText.FAIL)
+        # legendText = legendText.replace("***", colorText.END + colorText.FAIL)
         # return colorText.WHITE + legendText + colorText.END
         return legendText
 
@@ -1516,8 +1526,8 @@ class tools:
                     try:
                         import keras
                     except:
-                        print("This installation might not work well, especially for NIFTY prediction. Please install 'keras' library on your machine!")
-                        print(
+                        OutputControls().printOutput("This installation might not work well, especially for NIFTY prediction. Please install 'keras' library on your machine!")
+                        OutputControls().printOutput(
                                 colorText.BOLD
                                 + colorText.FAIL
                                 + "[+] 'Keras' library is not installed. You may wish to follow instructions from\n[+] https://github.com/pkjmesra/PKScreener/"
@@ -1532,7 +1542,7 @@ class tools:
             if not retrial:
                 tools.getNiftyModel(retrial=True)
         if model is None:
-            print(
+            OutputControls().printOutput(
                 colorText.BOLD
                 + colorText.FAIL
                 + "[+] 'Keras' library is not installed. Prediction failed! You may wish to follow instructions from\n[+] https://github.com/pkjmesra/PKScreener/"

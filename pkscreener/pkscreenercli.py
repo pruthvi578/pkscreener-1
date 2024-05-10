@@ -246,11 +246,14 @@ configManager = ConfigManager.tools()
 
 def removeMonitorFile():
     from PKDevTools.classes import Archiver
-    filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs.txt")
-    try:
-        os.remove(filePath)
-    except:
-        pass
+    filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs")
+    index = 0
+    while index < configManager.maxDashboardWidgetsPerRow*configManager.maxNumResultRowsInMonitor:
+        try:
+            os.remove(f"{filePath}_{index}.txt")
+        except:
+            pass
+        index += 1
 
 def logFilePath():
     try:
@@ -385,6 +388,7 @@ def runApplication():
             monitorOption_org = ""
             # args.monitor = configManager.defaultMonitorOptions
             if args.monitor:
+                configManager.getConfig(ConfigManager.parser)
                 args.answerdefault = args.answerdefault or 'Y'
                 if MarketMonitor().monitorIndex == 0:
                     dbTimestamp = PKDateUtilities.currentDateTime().strftime("%H:%M:%S")
@@ -409,8 +413,23 @@ def runApplication():
                     configManager.toggleConfig(candleDuration='1d', clearCache=False)
                 if monitorOption.startswith("|"):
                     monitorOption = monitorOption.replace("|","")
+                    monitorOptions = monitorOption.split(":")
+                    if monitorOptions[1] != "0":
+                        monitorOptions[1] = "0"
+                        monitorOption = ":".join(monitorOptions)
                     # We need to pipe the output from previous run into the next one
-                    if resultStocks is not None:
+                    if monitorOption.startswith("{") and "}" in monitorOption:
+                        srcIndex = monitorOption.split("}")[0].split("{")[-1]
+                        monitorOption="".join(monitorOption.split("}")[1:])
+                        try:
+                            srcIndex = int(srcIndex)
+                            # Let's get the previously saved result for the monitor
+                            savedStocks = MarketMonitor().monitorResultStocks[str(srcIndex)]
+                            monitorOption = f"{monitorOption}:{savedStocks}"
+                        except:
+                            # Probably wrong (non-integer) index passed. Let's continue anyway
+                            pass
+                    elif resultStocks is not None:
                         resultStocks = ",".join(resultStocks)
                         monitorOption = f"{monitorOption}:{resultStocks}"
                 args.options = monitorOption.replace("::",":")
@@ -441,6 +460,8 @@ def runApplication():
                 plainResults = plainResults[~plainResults.index.duplicated(keep='first')]
                 results = results[~results.index.duplicated(keep='first')]
                 resultStocks = plainResults.index
+            if args.monitor:
+                MarketMonitor().saveMonitorResultStocks(plainResults)
             if results is not None and args.monitor and len(monitorOption_org) > 0:
                 MarketMonitor().refresh(screen_df=results,screenOptions=monitorOption_org, chosenMenu=updateMenuChoiceHierarchy(),dbTimestamp=f"{dbTimestamp} | CycleTime:{elapsed_time}s",telegram=args.telegram)
 
@@ -463,6 +484,10 @@ def pipeResults(prevOutput,args):
             configManager.toggleConfig(candleDuration='1d', clearCache=False)
         if monitorOption.startswith("|"):
             monitorOption = monitorOption.replace("|","")
+            monitorOptions = monitorOption.split(":")
+            if monitorOptions[1] != "0":
+                monitorOptions[1] = "0"
+                monitorOption = ":".join(monitorOptions)
             # We need to pipe the output from previous run into the next one
             if prevOutput is not None and not prevOutput.empty:
                 prevOutput_results = prevOutput[~prevOutput.index.duplicated(keep='first')]
@@ -494,7 +519,11 @@ def pkscreenercli():
     # configManager.restartRequestsCache()
     # args.monitor = configManager.defaultMonitorOptions
     if args.monitor is not None:
-        MarketMonitor(monitors=args.monitor.split(",") if len(args.monitor)>5 else configManager.defaultMonitorOptions.split(","),maxNumResultsPerRow=configManager.maxDashboardWidgetsPerRow)
+        MarketMonitor(monitors=args.monitor.split(",") if len(args.monitor)>5 else configManager.defaultMonitorOptions.split(","),
+                      maxNumResultsPerRow=configManager.maxDashboardWidgetsPerRow,
+                      maxNumColsInEachResult=6,
+                      maxNumRowsInEachResult=10,
+                      maxNumResultRowsInMonitor=configManager.maxNumResultRowsInMonitor)
 
     if args.log or configManager.logsEnabled:
         setupLogger(shouldLog=True, trace=args.testbuild)
@@ -529,9 +558,9 @@ def pkscreenercli():
         # Launched by bot for intraday monitor?
         if (PKDateUtilities.isTradingTime() and not PKDateUtilities.isTodayHoliday()[0]) or ("PKDevTools_Default_Log_Level" in os.environ.keys()):
             from PKDevTools.classes import Archiver
-            filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs.txt")
+            filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs_0.txt")
             if os.path.exists(filePath):
-                default_logger().info("monitor_outputs.txt already exists! This means an instance may already be running. Exiting now...")
+                default_logger().info("monitor_outputs_0.txt already exists! This means an instance may already be running. Exiting now...")
                 # Since the file exists, it means, there is another instance running
                 sys.exit(0)
             import atexit

@@ -40,6 +40,7 @@ class MarketMonitor(SingletonMixin, metaclass=SingletonType):
             self.monitors = monitors[:maxNumResultRowsInMonitor*maxNumResultsPerRow]
             self.monitorIndex = 0
             self.monitorPositions = {}
+            self.monitorResultStocks = {}
             # self.monitorNames = {}
             # We are going to present the dataframes in a 3x3 matrix with limited set of columns
             rowIndex = 0
@@ -76,6 +77,15 @@ class MarketMonitor(SingletonMixin, metaclass=SingletonType):
         except:
             pass
         return option
+
+    def saveMonitorResultStocks(self, results_df):
+        if results_df is None or results_df.empty:
+            prevOutput_results = "NONE"
+        else:
+            prevOutput_results = results_df[~results_df.index.duplicated(keep='first')]
+            prevOutput_results = prevOutput_results.index
+            prevOutput_results = ",".join(prevOutput_results)
+        self.monitorResultStocks[str(self.monitorIndex)] = prevOutput_results
 
     def refresh(self, screen_df:pd.DataFrame=None, screenOptions=None, chosenMenu=None, dbTimestamp="", telegram=False):
         highlightRows = []
@@ -159,11 +169,11 @@ class MarketMonitor(SingletonMixin, metaclass=SingletonType):
 
         self.monitor_df = self.monitor_df.replace(np.nan, "-", regex=True)
         # self.monitorNames[screenOptions] = f"(Dashboard) > {chosenMenu}"
-        latestScanMenuOption = f"{dbTimestamp} (Dashboard) > " + f"{chosenMenu} [{screenOptions}]"
+        latestScanMenuOption = f"[+] {dbTimestamp} (Dashboard) > " + f"{chosenMenu} [{screenOptions}]"
         OutputControls().printOutput(
             colorText.BOLD
             + colorText.FAIL
-            + f"[+] {latestScanMenuOption}"
+            + latestScanMenuOption
             + colorText.END
             , enableMultipleLineOutput=True
         )
@@ -188,9 +198,9 @@ class MarketMonitor(SingletonMixin, metaclass=SingletonType):
                             maxcolwidths=[None,None,4,3]
                         ).encode("utf-8").decode(STD_ENCODING).replace("-K-----S-----C-----R","-K-----S----C---R").replace("%  ","% ").replace("=K=====S=====C=====R","=K=====S====C===R").replace("Vol  |","Vol|").replace("x  ","x")
             telegram_df_tabulated = telegram_df_tabulated.replace("-E-----N-----E-----R","-E-----N----E---R").replace("=E=====N=====E=====R","=E=====N====E===R")
-            result_output = f"{latestScanMenuOption}\n<pre>{telegram_df_tabulated}</pre>"
+            result_output = f"Latest data as of:{dbTimestamp}\n<b>{chosenMenu.split('>')[-1]}</b> [{screenOptions}]\n<pre>{telegram_df_tabulated}</pre>"
             try:
-                filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs.txt")
+                filePath = os.path.join(Archiver.get_user_outputs_dir(), f"monitor_outputs_{self.monitorIndex}.txt")
                 f = open(filePath, "w")
                 f.write(result_output)
                 f.close()

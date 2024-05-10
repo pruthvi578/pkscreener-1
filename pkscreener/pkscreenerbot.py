@@ -52,6 +52,7 @@ from telegram.constants import ParseMode
 
 start_time = datetime.now()
 MINUTES_5_IN_SECONDS = 300
+OWNER_USER = "Itsonlypk"
 
 from PKDevTools.classes.Telegram import get_secrets
 from PKDevTools.classes.PKDateUtilities import PKDateUtilities
@@ -59,7 +60,10 @@ from PKDevTools.classes.ColorText import colorText
 from pkscreener.classes.MenuOptions import MenuRenderStyle, menu, menus
 from pkscreener.classes.WorkflowManager import run_workflow
 from pkscreener.globals import showSendConfigInfo, showSendHelpInfo
+import pkscreener.classes.ConfigManager as ConfigManager
+
 monitor_proc = None
+configManager = ConfigManager.tools()
 
 try:
     from telegram import __version_info__
@@ -103,23 +107,23 @@ m1 = menus()
 m2 = menus()
 m3 = menus()
 
-TOP_LEVEL_SCANNER_MENUS = ["X", "B", "MI"]
+TOP_LEVEL_SCANNER_MENUS = ["X", "B", "MI","DV"]
 TOP_LEVEL_SCANNER_SKIP_MENUS = ["M", "S", "G", "C", "T", "D", "I", "E", "U", "L", "Z"]
 INDEX_SKIP_MENUS = ["W","E","M","Z","0","2","3","4","6","7","9","10","13"]
 SCANNER_SKIP_MENUS_1_TO_6 = ["0","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","42","M","Z"]
 SCANNER_SKIP_MENUS_7_TO_12 = ["0","1","2","3","4","5","6","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","42","M","Z"]
 SCANNER_SKIP_MENUS_13_TO_18 = ["0","1","2","3","4","5","6","7","8","9","10","11","12","19","20","21","22","23","24","25","26","27","28","29","30","42","M","Z"]
 SCANNER_SKIP_MENUS_19_TO_25 = ["0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","22","26","27","28","29","30","42","M","Z"]
-SCANNER_SKIP_MENUS_26_TO_31 = ["0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","29","30","42","M","Z"]
+SCANNER_SKIP_MENUS_26_TO_31 = ["0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","30","42","M","Z"]
 SCANNER_MENUS_WITH_NO_SUBMENUS = ["1","2","3","10","11","12","13","14","15","16","17","18","19","20","21","23","24","25","26","27","28"]
 SCANNER_MENUS_WITH_SUBMENU_SUPPORT = ["6", "7", "21"]
 
 INDEX_COMMANDS_SKIP_MENUS_SCANNER = ["W", "E", "M", "Z"]
 INDEX_COMMANDS_SKIP_MENUS_BACKTEST = ["W", "E", "M", "Z", "N", "0", "15"]
-UNSUPPORTED_COMMAND_MENUS =["22","29","30","42","M","Z"]
-SUPPORTED_COMMAND_MENUS = ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28"]
+UNSUPPORTED_COMMAND_MENUS =["22","30","42","M","Z"]
+SUPPORTED_COMMAND_MENUS = ["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29"]
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, updatedResults=None) -> int:
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, updatedResults=None, monitorIndex=0,chosenBotMenuOption="") -> int:
     """Send message on `/start`."""
     updateCarrier = None
     if update is None:
@@ -139,11 +143,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, updatedResul
     # The keyboard is a list of button rows, where each row is in turn
     # a list (hence `[[...]]`).
     mns = m0.renderForMenu(asList=True)
-    if (PKDateUtilities.isTradingTime() and not PKDateUtilities.isTodayHoliday()[0]) or ("PKDevTools_Default_Log_Level" in os.environ.keys()):
-        mns.append(menu().create("MI", "Int. Monitor", 2))
+    if (PKDateUtilities.isTradingTime() and not PKDateUtilities.isTodayHoliday()[0]) or ("PKDevTools_Default_Log_Level" in os.environ.keys()) or sys.argv[0].endswith(".py"):
+        mns.append(menu().create(f"MI_{monitorIndex}", "Int. Monitor", 2))
+    if user.username == OWNER_USER:
+        mns.append(menu().create(f"DV_0", ("Enbl" if not configManager.logsEnabled else "Dsbl"), 2))
+
     inlineMenus = []
     for mnu in mns:
-        if mnu.menuKey in TOP_LEVEL_SCANNER_MENUS:
+        if mnu.menuKey[0:2] in TOP_LEVEL_SCANNER_MENUS:
             inlineMenus.append(
                 InlineKeyboardButton(
                     mnu.menuText.split("(")[0],
@@ -164,6 +171,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, updatedResul
             cmdText = f"{cmdText}\n\n{cmd.commandTextKey()} for {cmd.commandTextLabel()}"
         menuText = f"Welcome {user.first_name}, {(user.username)}! Please choose a menu option by selecting a button from below.\n\nYou can also explore a wide variety of all other scanners by typing in \n{cmdText}\n\n OR just use the buttons below to choose."
     else:
+        chosenBotMenuOption = f"{chosenBotMenuOption}\nInt. Monitor. MonitorIndex:{monitorIndex}"
         menuText = updatedResults
     # Send message with text and appended InlineKeyboard
     if update.callback_query is not None:
@@ -177,66 +185,124 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE, updatedResul
         )
     await context.bot.send_message(
         chat_id=int(f"-{Channel_Id}"),
-        text=f"Name: {user.first_name}, Username:@{user.username} with ID: {str(user.id)} started using the bot!",
+        text=f"Name: {user.first_name}, Username:@{user.username} with ID: {str(user.id)} started using the bot!\n{chosenBotMenuOption}",
         parse_mode=ParseMode.HTML,
     )
     # Tell ConversationHandler that we're in state `FIRST` now
     return START_ROUTES
 
+def removeMonitorFile():
+    from PKDevTools.classes import Archiver
+    configManager.getConfig(ConfigManager.parser)
+    filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs")
+    index = 0
+    while index < configManager.maxDashboardWidgetsPerRow*configManager.maxNumResultRowsInMonitor:
+        try:
+            os.remove(f"{filePath}_{index}.txt")
+        except:
+            pass
+        index += 1
+
+def launchIntradayMonitor():
+    from PKDevTools.classes import Archiver
+    filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs")
+    result_outputs = ""
+    if (PKDateUtilities.isTradingTime() and not PKDateUtilities.isTodayHoliday()[0]) or ("PKDevTools_Default_Log_Level" in os.environ.keys() or sys.argv[0].endswith(".py")):
+        result_outputs = "Starting up the monitor for this hour. Please try again after 30-40 seconds."
+    else:
+        result_outputs = f"{PKDateUtilities.currentDateTime()}\nIntraday Monitor is available only during the NSE trading hours! Please try during the next trading session."
+        try:
+            removeMonitorFile()
+        except:
+            pass
+        return result_outputs, filePath
+
+    appLogsEnabled = ("PKDevTools_Default_Log_Level" in os.environ.keys() or sys.argv[0].endswith(".py"))
+    # User wants an Int. Monitor
+    launcher = "/home/runner/work/PKScreener/PKScreener/pkscreenercli.bin" if "MONITORING_BOT_RUNNER" in os.environ.keys() else "pkscreener"
+    launcher = f"python3.11 {launcher}" if launcher.endswith(".py") else launcher
+    
+    try:
+        from subprocess import Popen
+        global monitor_proc
+        if monitor_proc is None or monitor_proc.poll() is not None: # Process finished from an earlier launch
+            # Let's remove the old file(s) so that the new app can begin to run
+            # If we don't remove, it might just exit assuming that there's another instance
+            # already running.
+            removeMonitorFile()
+            appArgs = [f"{launcher}","-a","Y","-m","X","--telegram",]
+            if appLogsEnabled:
+                appArgs.append("-l")
+            else:
+                appArgs.append("-p")
+            monitor_proc = Popen(appArgs)
+            logger.info(f"{launcher} -a Y -m 'X' -p --telegram launched")
+        else:
+            result_outputs = "Monitor is running, but the results are being prepared. Try again in next few seconds."
+            logger.info(f"{launcher} -a Y -m 'X' -p --telegram already running")
+    except Exception as e:
+        result_outputs = "Hmm...It looks like you caught us taking a break! Try again later :-)"
+        logger.info(f"{launcher} -a Y -m 'X' -p --telegram could not be launched")
+        logger.info(e)
+        pass
+    return result_outputs, filePath
+
+async def XDevModeHandler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show new choice of buttons"""
+    query = update.callback_query
+    data = query.data.upper().replace("CX", "X").replace("CB", "B").replace("CG", "G").replace("CMI", "MI").replace("CDV","DV")
+    if data[0:2] not in TOP_LEVEL_SCANNER_MENUS:
+        return start(update, context)
+    if data.startswith("DV"):
+        # Dev Mode
+        devModeIndex = int(data.split("_")[1])
+        if devModeIndex == 0:
+            if "PKDevTools_Default_Log_Level" in os.environ.keys():
+                del os.environ['PKDevTools_Default_Log_Level']
+                configManager.maxNumResultRowsInMonitor = 2
+                configManager.logsEnabled = False
+            else:
+                # Switch config file
+                configManager.maxNumResultRowsInMonitor = 3
+                configManager.logsEnabled = True
+                os.environ["PKDevTools_Default_Log_Level"] = str(logging.INFO)
+            configManager.setConfig(ConfigManager.parser, default=True, showFileCreatedText=False)
+            chosenBotMenuOption = configManager.showConfigFile(defaultAnswer='Y')
+            if monitor_proc is not None:
+                try:
+                    monitor_proc.kill()
+                except:
+                    pass
+            
+            launchIntradayMonitor()
+            await start(update, context,chosenBotMenuOption=chosenBotMenuOption)
+    return START_ROUTES
 
 async def XScanners(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Show new choice of buttons"""
     query = update.callback_query
     data = query.data.upper().replace("CX", "X").replace("CB", "B").replace("CG", "G").replace("CMI", "MI")
-    if data not in TOP_LEVEL_SCANNER_MENUS:
+    if data[0:2] not in TOP_LEVEL_SCANNER_MENUS:
         return start(update, context)
-    if data == "MI":
-        from PKDevTools.classes import Archiver
-        filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs.txt")
-        appLogsEnabled = ("PKDevTools_Default_Log_Level" in os.environ.keys())
-        # User wants an Int. Monitor
-        launcher = "/home/runner/work/PKScreener/PKScreener/pkscreenercli.bin" if "MONITORING_BOT_RUNNER" in os.environ.keys() else "pkscreener"
-        launcher = f"python3.11 {launcher}" if launcher.endswith(".py") else launcher
-        # print(f"launcher is {sys.argv[0]} -a Y -m 'X' -p --telegram")
+    if data.startswith("MI"):
+        monitorIndex = int(data.split("_")[1])
+        result_outputs, filePath = launchIntradayMonitor()
+        filePath = f"{filePath}_{monitorIndex}.txt"
+        monitorIndex += 1
+        if monitorIndex >= configManager.maxDashboardWidgetsPerRow*configManager.maxNumResultRowsInMonitor:
+            monitorIndex = 0
         try:
-            from subprocess import Popen
-            global monitor_proc
-            if monitor_proc is None or monitor_proc.poll() is not None: # Process finished from an earlier launch
-                if os.path.exists(filePath):
-                    # Let's remove the old file so that the new app can begin to run
-                    # If we don't remove, it might just exit assuming that there's another instance
-                    # already running.
-                    os.remove(filePath)
-                appArgs = [f"{launcher}","-a","Y","-m","X","--telegram",]
-                if appLogsEnabled:
-                    appArgs.append("-l")
-                else:
-                    appArgs.append("-p")
-                monitor_proc = Popen(appArgs)
-                logger.info(f"{launcher} -a Y -m 'X' -p --telegram launched")
-            else:
-                logger.info(f"{launcher} -a Y -m 'X' -p --telegram already running")
-        except Exception as e:
-            logger.info(f"{launcher} -a Y -m 'X' -p --telegram could not be launched")
-            logger.info(e)
-            pass
-        try:
-            # if not os.path.exists(filePath):
-            #     sleep(5)
-            #     if not os.path.exists(filePath):
-            #         f = open(filePath, "w")
-            #         f.write("Please wait...")
-            #         f.close()
             if os.path.exists(filePath):
                 f = open(filePath, "r")
                 result_outputs = f.read()
                 f.close()
-            else:
-                result_outputs = "No New update. Please try again in the next few seconds."
-            await start(update, context, updatedResults=result_outputs)
+            await start(update, context, updatedResults=result_outputs,monitorIndex=monitorIndex)
             return START_ROUTES
-        except:
-            await start(update, context, updatedResults="No New update. Please try again in the next few seconds.")
+        except Exception as e:
+            result_outputs = "Hmm...It looks like you caught us taking a break! Try again later :-)\nCycleTime shows how much it's taking us to download latest data and then perform each cycle of analysis for all configured scanners. We may be downloading the latest data right now."
+            logger.info(e)
+            logger.info(f"Could not read {filePath}")
+            await start(update, context, updatedResults=result_outputs,monitorIndex=monitorIndex)
             return START_ROUTES
 
     midSkip = "1" if data == "X" else "N"
@@ -277,7 +343,7 @@ async def XScanners(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def Level2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Show new choice of buttons"""
     inlineMenus = []
-    menuText = "Something went wrong! Please try again..."
+    menuText = "Hmm...It looks like you caught us taking a break! Try again later :-)"
     mns = []
     query = update.callback_query
     await query.answer()
@@ -301,7 +367,7 @@ async def Level2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 renderStyle=MenuRenderStyle.STANDALONE,
             )
             menuText = menuText + "\n\nN > More options"
-            menuText = menuText + "\n\nH > Home"
+            menuText = menuText + "\nH > Home"
             mns = m2.renderForMenu(
                 m1.find(selection[1]),
                 skip=SCANNER_SKIP_MENUS_1_TO_6,
@@ -319,8 +385,8 @@ async def Level2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 skip=SCANNER_SKIP_MENUS_7_TO_12,
                 renderStyle=MenuRenderStyle.STANDALONE,
             )
-            menuText = menuText + "\nM > More Options"
-            menuText = menuText + "\n\nH > Home"
+            menuText = menuText + "\n\nM > More Options"
+            menuText = menuText + "\nH > Home"
             mns = m2.renderForMenu(
                 m1.find(selection[1]),
                 skip=SCANNER_SKIP_MENUS_7_TO_12,
@@ -335,8 +401,8 @@ async def Level2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 skip=SCANNER_SKIP_MENUS_13_TO_18,
                 renderStyle=MenuRenderStyle.STANDALONE,
             )
-            menuText = menuText + "\n>> More Options"
-            menuText = menuText + "\n\nH > Home"
+            menuText = menuText + "\n\n>> More Options"
+            menuText = menuText + "\nH > Home"
             mns = m2.renderForMenu(
                 m1.find(selection[1]),
                 skip=SCANNER_SKIP_MENUS_13_TO_18,
@@ -351,8 +417,8 @@ async def Level2(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 skip=SCANNER_SKIP_MENUS_19_TO_25,
                 renderStyle=MenuRenderStyle.STANDALONE,
             )
-            menuText = menuText + "\nR > More Options"
-            menuText = menuText + "\n\nH > Home"
+            menuText = menuText + "\n\nR > More Options"
+            menuText = menuText + "\nH > Home"
             mns = m2.renderForMenu(
                 m1.find(selection[1]),
                 skip=SCANNER_SKIP_MENUS_19_TO_25,
@@ -464,7 +530,7 @@ def default_markup(inlineMenus):
 async def sendUpdatedMenu(menuText, update: Update, context, reply_markup, replaceWhiteSpaces=True):
     try:
         if update.callback_query.message.text == menuText:
-            menuText = f"Something went wrong! Maybe try again later.\n{PKDateUtilities.currentDateTime()}: {menuText}"
+            menuText = f"{PKDateUtilities.currentDateTime()}:\n{menuText}"
         await update.callback_query.edit_message_text(
             text=menuText.replace("     ", "").replace("    ", "").replace("\t", "").replace(colorText.FAIL,"").replace(colorText.END,"") if replaceWhiteSpaces else menuText,
             parse_mode="HTML",
@@ -1037,11 +1103,11 @@ def runpkscreenerbot() -> None:
             START_ROUTES: [
                 CallbackQueryHandler(XScanners, pattern="^" + str("CX") + "$"),
                 CallbackQueryHandler(XScanners, pattern="^" + str("CB") + "$"),
-                CallbackQueryHandler(XScanners, pattern="^" + str("CMI") + "$"),
+                CallbackQueryHandler(XScanners, pattern="^" + str("CMI_")),
+                CallbackQueryHandler(XDevModeHandler, pattern="^" + str("CDV_")),
                 # CallbackQueryHandler(XScanners, pattern="^" + str("CG") + "$"),
                 CallbackQueryHandler(Level2, pattern="^" + str("CX_")),
                 CallbackQueryHandler(Level2, pattern="^" + str("CB_")),
-                CallbackQueryHandler(Level2, pattern="^" + str("CMI_")),
                 # CallbackQueryHandler(Level2, pattern="^" + str("CG_")),
                 CallbackQueryHandler(end, pattern="^" + str("CZ") + "$"),
                 CallbackQueryHandler(start, pattern="^"),
@@ -1061,7 +1127,8 @@ def runpkscreenerbot() -> None:
     application.add_handler(conv_handler)
     # ...and the error handler
     application.add_error_handler(error_handler)
-
+    # Run the intraday monitor
+    launchIntradayMonitor()
     # Run the bot until the user presses Ctrl-C
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 

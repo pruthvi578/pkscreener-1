@@ -581,6 +581,9 @@ def labelDataForPrinting(screenResults, saveResults, configManager, volumeRatio,
         elif executeOption == 23:
             sortKey = ["bbands_ulr_ratio_max5"] if "bbands_ulr_ratio_max5" in screenResults.columns else ["Volume"]
             ascending = [False]
+        elif executeOption == 27: # ATR Cross
+            sortKey = ["ATR"] if "ATR" in screenResults.columns else ["Volume"]
+            ascending = [False]
         try:
             try:
                 screenResults[sortKey] = screenResults[sortKey].replace("", np.nan).replace(np.inf, np.nan).replace(-np.inf, np.nan).astype(float)
@@ -598,6 +601,10 @@ def labelDataForPrinting(screenResults, saveResults, configManager, volumeRatio,
         columnsToBeDeleted = ["MFI","FVDiff","ConfDMADifference","bbands_ulr_ratio_max5", "RSIi"]
         if userPassedArgs is not None and userPassedArgs.options is not None and userPassedArgs.options.upper().startswith("C"):
             columnsToBeDeleted.append("FairValue")
+        if executeOption == 27: # ATR Cross
+            columnsToBeDeleted.append("Consol.")
+            screenResults['ATR'] = screenResults['ATR'].astype(str)
+            screenResults['ATR'] = colorText.GREEN + screenResults['ATR'] + colorText.END
         for column in columnsToBeDeleted:
             if column in saveResults.columns:
                 saveResults.drop(column, axis=1, inplace=True, errors="ignore")
@@ -702,19 +709,19 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
         launcher = sys.argv[0]
         launcher = f"python3.11 {launcher}" if launcher.endswith(".py") else launcher
         if menuOption in ["M"]:
-            print(f"{colorText.GREEN}Launching PKScreener in monitoring mode. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -m 'X'{colorText.END}\n{colorText.WARN}Press Ctrl + C to exit monitoring mode.{colorText.END}")
+            OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener in monitoring mode. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -m 'X'{colorText.END}\n{colorText.WARN}Press Ctrl + C to exit monitoring mode.{colorText.END}")
             sleep(2)
             os.system(f"{launcher} -a Y -m 'X'")
         elif menuOption in ["D"]:
-            print(f"{colorText.GREEN}Launching PKScreener to Download daily OHLC data. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -e -d{colorText.END}\n{colorText.WARN}Press Ctrl + C to exit at any time.{colorText.END}")
+            OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener to Download daily OHLC data. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -e -d{colorText.END}\n{colorText.WARN}Press Ctrl + C to exit at any time.{colorText.END}")
             sleep(2)
             os.system(f"{launcher} -a Y -e -d")
         elif menuOption in ["I"]:
-            print(f"{colorText.GREEN}Launching PKScreener to Download intraday OHLC data. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -e -d -i 1m{colorText.END}\n{colorText.WARN}Press Ctrl + C to exit at any time.{colorText.END}")
+            OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener to Download intraday OHLC data. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -e -d -i 1m{colorText.END}\n{colorText.WARN}Press Ctrl + C to exit at any time.{colorText.END}")
             sleep(2)
             os.system(f"{launcher} -a Y -e -d -i 1m")
         elif menuOption in ["L"]:
-            print(f"{colorText.GREEN}Launching PKScreener to collect logs. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -l{colorText.END}\n{colorText.WARN}Press Ctrl + C to exit at any time.{colorText.END}")
+            OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener to collect logs. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -l{colorText.END}\n{colorText.WARN}Press Ctrl + C to exit at any time.{colorText.END}")
             sleep(2)
             os.system(f"{launcher} -a Y -l")
         sys.exit(0)
@@ -779,8 +786,9 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
                 pass
         userOption = userOption.upper()
         if userOption == "M":
-                # Go back to the caller. It will show the console menu again.
-                return None, None
+            Utility.tools.clearScreen(forceTop=True)
+            # Go back to the caller. It will show the console menu again.
+            return None, None
         elif userOption == "Z":
             handleExitRequest(userOption)
             return None, None
@@ -837,6 +845,7 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
 
     handleMenu_XBG(menuOption, indexOption, executeOption)
     if indexOption == "M" or executeOption == "M":
+        Utility.tools.clearScreen(forceTop=True)
         # Go back to the caller. It will show the console menu again.
         return None, None
     listStockCodes = handleRequestForSpecificStocks(options, indexOption)
@@ -1080,11 +1089,11 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
     if executeOption == 42:
         Utility.tools.getLastScreenedResults(defaultAnswer)
         return None, None
-    if executeOption >= 29 and executeOption <= 41:
+    if executeOption >= 30 and executeOption <= 41:
         OutputControls().printOutput(
             colorText.BOLD
             + colorText.FAIL
-            + "\n[+] Error: Option 29 to 41 Not implemented yet! Press <Enter> to continue."
+            + "\n[+] Error: Option 30 to 41 Not implemented yet! Press <Enter> to continue."
             + colorText.END
         )
         input("Press <Enter> to continue...")
@@ -1236,7 +1245,7 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
         sys.stdout.write(f"\x1b[1A") # Replace the download progress bar and start writing on the same line
         if not keyboardInterruptEventFired:
             global tasks_queue, results_queue, consumers, logging_queue
-            screenResults, saveResults, backtest_df, tasks_queue, results_queue, consumers,logging_queue = PKScanRunner.runScanWithParams(userPassedArgs,keyboardInterruptEvent,screenCounter,screenResultsCounter,stockDictPrimary,stockDictSecondary,testing, backtestPeriod, menuOption, samplingDuration, items,screenResults, saveResults, backtest_df,scanningCb=runScanners,tasks_queue=tasks_queue, results_queue=results_queue, consumers=consumers,logging_queue=logging_queue)
+            screenResults, saveResults, backtest_df, tasks_queue, results_queue, consumers,logging_queue = PKScanRunner.runScanWithParams(userPassedArgs,keyboardInterruptEvent,screenCounter,screenResultsCounter,stockDictPrimary,stockDictSecondary,testing, backtestPeriod, menuOption,executeOption, samplingDuration, items,screenResults, saveResults, backtest_df,scanningCb=runScanners,tasks_queue=tasks_queue, results_queue=results_queue, consumers=consumers,logging_queue=logging_queue)
             if userPassedArgs is not None and (userPassedArgs.monitor is None and "|" not in userPassedArgs.options and not userPassedArgs.options.upper().startswith("C")):
                 tasks_queue = None
                 results_queue = None
@@ -1335,7 +1344,7 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
                             summaryLabel = "NSE Stocks with corporate action type stock split:",
                             detailLabel = None,
                             )
-                else:
+                elif "|" not in userPassedArgs.options:
                     printNotifySaveScreenedResults(
                         screenResults,
                         saveResults,
@@ -1747,6 +1756,7 @@ def updateMenuChoiceHierarchy():
     menuChoiceHierarchy = f"{menuChoiceHierarchy}{intraday}"
     global nValueForMenu
     menuChoiceHierarchy = menuChoiceHierarchy.replace("N-",f"{nValueForMenu}-")
+    Utility.tools.clearScreen()
     OutputControls().printOutput(
         colorText.BOLD
         + colorText.FAIL
@@ -2155,6 +2165,21 @@ def removeUnknowns(screenResults, saveResults):
         ]
     return screenResults, saveResults
 
+# def apply_df_style(x):
+#     red = 'color: red'
+#     noColor = '' 
+#     green = 'color: green'
+#     #compare columns
+#     mask_green_bid = x['BidQty'] > x['AskQty']
+#     mask_red_bid = x['BidQty'] <= x['AskQty']
+#     mask_green_vwap = x['VWAP'] >= x['LTP']
+#     #DataFrame with same index and columns names as original filled empty strings
+#     df1 =  pd.DataFrame(noColor, index=x.index, columns=x.columns)
+#     #modify values of df1 column by boolean mask
+#     df1.loc[mask_green_bid, 'BidQty'] = green
+#     df1.loc[mask_red_bid, 'AskQty'] = red
+#     df1.loc[mask_green_vwap, 'VWAP'] = green
+#     return df1
 
 def runScanners(
     menuOption,
@@ -2205,6 +2230,7 @@ def runScanners(
             start_time = time.time()
 
             def processResultsCallback(resultItem, processedCount,result_df, *otherArgs):
+                global userPassedArgs
                 (menuOption, backtestPeriod, result, lstscreen, lstsave) = otherArgs
                 numStocks = processedCount
                 result = resultItem
@@ -2216,6 +2242,24 @@ def runScanners(
                     + f"{'Remaining' if userPassedArgs.download else ('Found' if menuOption in ['X'] else 'Analysed')} {len(lstscreen) if not userPassedArgs.download else processedCount} {'Stocks' if menuOption in ['X'] else 'Records'}"
                     + colorText.END
                 )
+                if result is not None:
+                    if not userPassedArgs.monitor and len(lstscreen) > 0 and userPassedArgs is not None and userPassedArgs.options.split(":")[2] in ["29"]:
+                        scr_df = pd.DataFrame(lstscreen)
+                        existingColumns = ["Stock","%Chng","LTP","Volume"]
+                        newColumns = ["BidQty","AskQty","LwrCP","UprCP","VWAP","DayVola","Del(%)"]
+                        existingColumns.extend(newColumns)
+                        scr_df = scr_df[existingColumns]
+                        scr_df.sort_values(by=["Volume","BidQty"], ascending=False, inplace=True)
+                        tabulated_results = colorText.miniTabulator().tb.tabulate(
+                                scr_df,
+                                headers="keys",
+                                showindex=False,
+                                tablefmt=colorText.No_Pad_GridFormat,
+                                maxcolwidths=Utility.tools.getMaxColumnWidths(scr_df)
+                            )
+                        tableLength = 2*len(lstscreen)+5
+                        OutputControls().printOutput('\n'+tabulated_results)
+                        sys.stdout.write(f"\x1b[{tableLength}A")  # cursor up one line
                 if keyboardInterruptEventFired:
                     return False, backtest_df
                 return not ((testing and len(lstscreen) >= 1) or len(lstscreen) >= max_allowed), backtest_df
@@ -2448,11 +2492,13 @@ def sendMessageToTelegramChannel(
         except Exception as e:  # pragma: no cover
             default_logger().debug(e, exc_info=True)
     if user is not None:
-        # Send an update to dev channel
-        send_message(
-            "Responded back to userId:{0} with {1}.{2}".format(user, caption, message),
-            userID="-1001785195297",
-        )
+        channel_userID="-1001785195297"
+        if user != channel_userID:
+            # Send an update to dev channel
+            send_message(
+                "Responded back to userId:{0} with {1}.{2}".format(user, caption, message),
+                userID="-1001785195297",
+            )
 
 
 def sendTestStatus(screenResults, label, user=None):

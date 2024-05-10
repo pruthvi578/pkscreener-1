@@ -37,13 +37,13 @@ from PKDevTools.classes.PKGitFolderDownloader import downloadFolder
 from PKDevTools.classes.PKMultiProcessorClient import PKMultiProcessorClient
 from PKDevTools.classes.multiprocessing_logging import LogQueueReader
 from PKDevTools.classes.SuppressOutput import SuppressOutput
+# from PKDevTools.classes.FunctionTimeouts import exit_after
 
 from pkscreener.classes.StockScreener import StockScreener
 from pkscreener.classes.CandlePatterns import CandlePatterns
 from pkscreener.classes.ConfigManager import parser, tools
 from PKDevTools.classes.OutputControls import OutputControls
-# from PKDevTools.classes.PKJoinableQueue import PKJoinableQueue
-
+from PKNSETools.PKIntraDay import Intra_Day
 import pkscreener.classes.Fetcher as Fetcher
 import pkscreener.classes.ScreeningStatistics as ScreeningStatistics
 import pkscreener.classes.Utility as Utility
@@ -251,15 +251,19 @@ class PKScanRunner:
             worker.objectDictionarySecondary = stockDictSecondary
             worker.refreshDatabase = True
             
-    def runScanWithParams(userPassedArgs,keyboardInterruptEvent,screenCounter,screenResultsCounter,stockDictPrimary,stockDictSecondary,testing, backtestPeriod, menuOption, samplingDuration, items,screenResults, saveResults, backtest_df,scanningCb,tasks_queue, results_queue, consumers,logging_queue):
+    def runScanWithParams(userPassedArgs,keyboardInterruptEvent,screenCounter,screenResultsCounter,stockDictPrimary,stockDictSecondary,testing, backtestPeriod, menuOption, executeOption, samplingDuration, items,screenResults, saveResults, backtest_df,scanningCb,tasks_queue, results_queue, consumers,logging_queue):
         if tasks_queue is None or results_queue is None or consumers is None:
-            tasks_queue, results_queue, consumers,logging_queue = PKScanRunner.prepareToRunScan(menuOption,keyboardInterruptEvent,screenCounter, screenResultsCounter, stockDictPrimary,stockDictSecondary, items)
+            tasks_queue, results_queue, consumers,logging_queue = PKScanRunner.prepareToRunScan(menuOption,keyboardInterruptEvent,screenCounter, screenResultsCounter, stockDictPrimary,stockDictSecondary, items,executeOption)
             try:
                 if logging_queue is not None:
                     log_queue_reader = LogQueueReader(logging_queue)
                     log_queue_reader.start()
             except:
                 pass
+        # if executeOption == 29: # Intraday Bid/Ask, for which we need to fetch data from NSE instead of yahoo
+        #     intradayFetcher = Intra_Day("SBINEQN") # This will initialise the cookies etc.
+        #     for consumer in consumers:
+        #         consumer.intradayNSEFetcher = intradayFetcher
         # else:
         #     # Restart the workers because the run method may have exited from a previous run
         #     PKScanRunner.startWorkers(consumers)
@@ -289,7 +293,7 @@ class PKScanRunner:
             PKScanRunner.terminateAllWorkers(userPassedArgs,consumers, tasks_queue, testing)
         return screenResults, saveResults,backtest_df,tasks_queue, results_queue, consumers, logging_queue
 
-    def prepareToRunScan(menuOption,keyboardInterruptEvent, screenCounter, screenResultsCounter, stockDictPrimary,stockDictSecondary, items):
+    def prepareToRunScan(menuOption,keyboardInterruptEvent, screenCounter, screenResultsCounter, stockDictPrimary,stockDictSecondary, items, executeOption):
         tasks_queue, results_queue, totalConsumers, logging_queue = PKScanRunner.initQueues(len(items))
         scr = ScreeningStatistics.ScreeningStatistics(PKScanRunner.configManager, default_logger())
         exists, cache_file = Utility.tools.afterMarketStockDataExists(intraday=PKScanRunner.configManager.isIntradayConfig())
@@ -320,6 +324,10 @@ class PKScanRunner:
                     )
                     for _ in range(totalConsumers)
                 ]
+        # if executeOption == 29: # Intraday Bid/Ask, for which we need to fetch data from NSE instead of yahoo
+        intradayFetcher = Intra_Day("SBINEQN") # This will initialise the cookies etc.
+        for consumer in consumers:
+            consumer.intradayNSEFetcher = intradayFetcher
         PKScanRunner.startWorkers(consumers)
         return tasks_queue,results_queue,consumers,logging_queue
 
@@ -390,6 +398,7 @@ class PKScanRunner:
     def shutdown(frame, signum):
         OutputControls().printOutput("Shutting down for test coverage")
 
+    # @exit_after(60)
     def runScan(userPassedArgs,testing,numStocks,iterations,items,numStocksPerIteration,tasks_queue,results_queue,originalNumberOfStocks,backtest_df, *otherArgs,resultsReceivedCb=None):
         queueCounter = 0
         counter = 0
@@ -418,10 +427,11 @@ class PKScanRunner:
                         True,
                         userPassedArgs
                     )
+            numStocks -= 1
             result = results_queue.get()
             if result is not None:
                 lastNonNoneResult = result
-            numStocks -= 1
+            
             if resultsReceivedCb is not None:
                 shouldContinue, backtest_df = resultsReceivedCb(result, numStocks, backtest_df,*otherArgs)
             counter += 1

@@ -1,14 +1,19 @@
 [![MADE-IN-INDIA](https://img.shields.io/badge/MADE%20WITH%20%E2%9D%A4%20IN-INDIA-orange?style=for-the-badge)](https://en.wikipedia.org/wiki/India) [![GitHub release (latest by date)](https://img.shields.io/github/v/release/pkjmesra/PKScreener?style=for-the-badge)](#) [![GitHub all releases](https://img.shields.io/github/downloads/pkjmesra/PKScreener/total?color=Green&label=Downloads&style=for-the-badge)](#) [![MADE_WITH](https://img.shields.io/badge/BUILT%20USING-PYTHON-yellow?style=for-the-badge&logo=python&logoColor=yellow)](https://www.python.org/)
 
 ## What's New?
-1. [v0.44.20240506.347] release
-* New scanner: 'ATR cross' added. Try X > 12 > 27
-* New scanner: 'Higher Opens' added. Try X > 12 > 28
+1. [v0.44.20240509.357] release
+* Bid/Ask build up scanner added. Try X > 12 > 29.
+* New scanner: 'ATR cross' added. Try X > 12 > 27 . It's now sorted by descending ATR instead of volume.
+* New scanner: 'Bullish Higher Opens' added. Try X > 12 > 28
 * Performance improvements to have the scans finish within 40 seconds for most cases on Mac/Ubuntu and within 60 seconds on Windows.
 * Monitoring dashboard added (with option --monitor "X") or just use the menu 'Monitor Intraday'. See --help option to see all command options. Configure how many and what scanners you want in the config file.
+* Intraday monitoring now available as part of telegram bot @nse_pkscreener_bot
 * MacOS failing builds fixed.
 * Menus had disappeared on Windows. That's fixed now. You should see all menus.
 * Export to Excel is working back again! It was broken inadvertently for a while. Thanks for reporting!
+* Monitoring, download data as pkl (both daily and intraday), and enabling logging from within the console app via menus is now added.
+* Piping the results from previous scans to the next one is added for all standard screener options (for example X:12:9:2.5;|X:12:23 will first scan all volume gaimers and then only scan for ATR cross from within those volume gainers). Use ; and | to separate scans and pipe results. Piping for monitoring dashboard is enabled as well but using , instead of ;.
+* Multiple other bug fixes.
 * NOTE: To fit all result columns on your screen, switch to smaller font size in your console.
 
 ## Older Releases
