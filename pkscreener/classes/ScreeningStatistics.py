@@ -237,47 +237,215 @@ class ScreeningStatistics:
         screenDict["ATR"] = saveDict["ATR"] #(colorText.GREEN if atrCrossCondition else colorText.FAIL) + str(atr.tail(1).iloc[0]) + colorText.END
         return atrCrossCondition
 
-# study(title="UT Bot Alerts", overlay = true)
+    # Function to compute ATRTrailingStop
+    def xATRTrailingStop_func(self,close, prev_close, prev_atr, nloss):
+        if close > prev_atr and prev_close > prev_atr:
+            return max(prev_atr, close - nloss)
+        elif close < prev_atr and prev_close < prev_atr:
+            return min(prev_atr, close + nloss)
+        elif close > prev_atr:
+            return close - nloss
+        else:
+            return close + nloss
+    
+    def findATRTrailingStops(self,df,key_value=1, atr_period=10, ema_period=200,buySellAll=1,saveDict=None,screenDict=None):
+        if df is None or len(df) == 0:
+            return False
+        data = df.copy()
+        data = data.fillna(0)
+        data = data.replace([np.inf, -np.inf], 0)
+        data = data[::-1]  # Reverse the dataframe so that its the oldest date first
 
-# // Inputs
-# a = input(1,     title = "Key Vaule. 'This changes the sensitivity'")
-# c = input(10,    title = "ATR Period")
-# h = input(false, title = "Signals from Heikin Ashi Candles")
+        SENSITIVITY = 1
+        # Compute ATR And nLoss variable
+        data["xATR"] = pktalib.ATR(data["High"], data["Low"], data["Close"], timeperiod=atr_period)
+        data["nLoss"] = SENSITIVITY * data["xATR"]
+        
+        #Drop all rows that have nan, X first depending on the ATR preiod for the moving average
+        data = data.dropna()
+        data = data.reset_index()
+        # Filling ATRTrailingStop Variable
+        data["ATRTrailingStop"] = [0.0] + [np.nan for i in range(len(data) - 1)]
+        
+        for i in range(1, len(data)):
+            data.loc[i, "ATRTrailingStop"] = self.xATRTrailingStop_func(
+                data.loc[i, "Close"],
+                data.loc[i - 1, "Close"],
+                data.loc[i - 1, "ATRTrailingStop"],
+                data.loc[i, "nLoss"],
+            )
+        data = self.computeBuySellSignals(data,ema_period=ema_period)
+        recent = data.tail(1)
+        print(recent)
+        buy = recent["Buy"].iloc[0]
+        sell = recent["Sell"].iloc[0]
+        saveDict["B/S"] = "Buy" if buy else ("Sell" if sell else "NA")
+        screenDict["B/S"] = ((colorText.GREEN + "Buy") if buy else ((colorText.FAIL+ "Sell") if sell else (colorText.WARN + "NA"))) + colorText.END
+        return buy if buySellAll==1 else (sell if buySellAll == 2 else (True if buySellAll == 3 else False))
 
-# xATR  = atr(c)
-# nLoss = a * xATR
+    #Calculating signals
+    def computeBuySellSignals(self,df,ema_period=200):
+        ema = pktalib.EMA(df["Close"], ema_period) #short_name='EMA', ewm=True)
+        
+        df["Above"] = ema > df["ATRTrailingStop"]
+        df["Below"] = ema < df["ATRTrailingStop"]
+        
+        df["Buy"] = (df["Close"] > df["ATRTrailingStop"]) & (df["Above"]==True)
+        df["Sell"] = (df["Close"] < df["ATRTrailingStop"]) & (df["Below"]==True)
+        return df
 
-# src = h ? security(heikinashi(syminfo.tickerid), timeframe.period, close, lookahead = false) : close
+    def findBuySellSignalsFromATRTrailing(self,df, key_value=1, atr_period=10, ema_period=200,buySellAll=1,saveDict=None,screenDict=None):
+        if df is None or len(df) == 0:
+            return False
+        data = df.copy()
+        data = data.fillna(0)
+        data = data.replace([np.inf, -np.inf], 0)
+        data = data[::-1]  # Reverse the dataframe so that its the oldest date first
 
-# xATRTrailingStop = 0.0
-# xATRTrailingStop := iff(src > nz(xATRTrailingStop[1], 0) and src[1] > nz(xATRTrailingStop[1], 0), max(nz(xATRTrailingStop[1]), src - nLoss),
-#    iff(src < nz(xATRTrailingStop[1], 0) and src[1] < nz(xATRTrailingStop[1], 0), min(nz(xATRTrailingStop[1]), src + nLoss), 
-#    iff(src > nz(xATRTrailingStop[1], 0), src - nLoss, src + nLoss)))
- 
-# pos = 0   
-# pos :=	iff(src[1] < nz(xATRTrailingStop[1], 0) and src > nz(xATRTrailingStop[1], 0), 1,
-#    iff(src[1] > nz(xATRTrailingStop[1], 0) and src < nz(xATRTrailingStop[1], 0), -1, nz(pos[1], 0))) 
-   
-# xcolor = pos == -1 ? color.red: pos == 1 ? color.green : color.blue 
+        # Calculate ATR and xATRTrailingStop
+        xATR = np.array(pktalib.ATR(data['High'], data['Low'], data['Close'], timeperiod=atr_period))
+        nLoss = key_value * xATR
+        src = data['Close']
+        # Initialize arrays
+        xATRTrailingStop = np.zeros(len(data))
+        xATRTrailingStop[0] = src[0] - nLoss[0]
 
-# ema   = ema(src,1)
-# above = crossover(ema, xATRTrailingStop)
-# below = crossover(xATRTrailingStop, ema)
+        # Calculate xATRTrailingStop using vectorized operations
+        mask_1 = (src > np.roll(xATRTrailingStop, 1)) & (np.roll(src, 1) > np.roll(xATRTrailingStop, 1))
+        mask_2 = (src < np.roll(xATRTrailingStop, 1)) & (np.roll(src, 1) < np.roll(xATRTrailingStop, 1))
+        mask_3 = src > np.roll(xATRTrailingStop, 1)
 
-# buy  = src > xATRTrailingStop and above 
-# sell = src < xATRTrailingStop and below
+        xATRTrailingStop = np.where(mask_1, np.maximum(np.roll(xATRTrailingStop, 1), src - nLoss), xATRTrailingStop)
+        xATRTrailingStop = np.where(mask_2, np.minimum(np.roll(xATRTrailingStop, 1), src + nLoss), xATRTrailingStop)
+        xATRTrailingStop = np.where(mask_3, src - nLoss, xATRTrailingStop)
 
-# barbuy  = src > xATRTrailingStop 
-# barsell = src < xATRTrailingStop 
+        mask_buy = (np.roll(src, 1) < xATRTrailingStop) & (src > np.roll(xATRTrailingStop, 1))
+        mask_sell = (np.roll(src, 1) > xATRTrailingStop) & (src < np.roll(xATRTrailingStop, 1))
 
-# plotshape(buy,  title = "Buy",  text = 'Buy',  style = shape.labelup,   location = location.belowbar, color= color.green, textcolor = color.white, transp = 0, size = size.tiny)
-# plotshape(sell, title = "Sell", text = 'Sell', style = shape.labeldown, location = location.abovebar, color= color.red,   textcolor = color.white, transp = 0, size = size.tiny)
+        pos = np.zeros(len(data))
+        pos = np.where(mask_buy, 1, pos)
+        pos = np.where(mask_sell, -1, pos)
+        pos[~((pos == 1) | (pos == -1))] = 0
 
-# barcolor(barbuy  ? color.green : na)
-# barcolor(barsell ? color.red   : na)
+        ema = np.array(pktalib.EMA(data['Close'], timeperiod=ema_period))
 
-# alertcondition(buy,  "UT Long",  "UT Long")
-# alertcondition(sell, "UT Short", "UT Short")
+        buy_condition_utbot = (xATRTrailingStop > ema) & (pos > 0) & (src > ema)
+        sell_condition_utbot = (xATRTrailingStop < ema) & (pos < 0) & (src < ema)
+
+        # The resulting trend array holds values of 1 (buy), -1 (sell), or 0 (neutral).
+        trend = np.where(buy_condition_utbot, 1, np.where(sell_condition_utbot, -1, 0))
+        trend_arr = np.array(trend)
+        data.insert(len(data.columns), "trend", trend_arr)
+        trend = trend[0]
+        saveDict["B/S"] = "Buy" if trend == 1 else ("Sell" if trend == -1 else "NA")
+        screenDict["B/S"] = (colorText.GREEN + "Buy") if trend == 1 else ((colorText.FAIL+ "Sell") if trend == -1 else (colorText.WARN + "NA")) + colorText.END
+        return buySellAll == trend
+
+    # Example of combining UTBot Alerts with RSI and ADX
+    def custom_strategy(self,dataframe):
+        dataframe = self.findBuySellSignalsFromATRTrailing(dataframe, key_value=2, atr_period=7, ema_period=100)
+        
+        # Calculate RSI and ADX
+        rsi = pktalib.RSI(dataframe['Close'])
+        adx = pktalib.ADX(dataframe['High'], dataframe['Low'], dataframe['Close'])
+        
+        # Define conditions based on UTBot Alerts and additional indicators
+        # ... (your custom conditions here)
+        
+        return dataframe
+    
+    def populate_indicators(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
+        if not self.dp:
+            # Don't do anything if DataProvider is not available.
+            return dataframe
+        L_optimize_trend_alert  = self.findBuySellSignalsFromATRTrailing(dataframe=dataframe, key_value= self.key_value_l.value, atr_period= self.atr_period_l.value, ema_period=self.ema_period_l.value)
+        # Long position?
+        dataframe['trend_l'] = L_optimize_trend_alert['trend']
+        S_optimize_trend_alert  = self.findBuySellSignalsFromATRTrailing(dataframe=dataframe, key_value= self.key_value_s.value, atr_period= self.atr_period_s.value, ema_period=self.ema_period_s.value)
+        # Short position?
+        dataframe['trend_s'] = S_optimize_trend_alert['trend']
+
+        # ADX
+        dataframe['adx'] = pktalib.ADX(dataframe)
+        
+        # RSI
+        # dataframe['rsi'] = ta.RSI(dataframe)
+
+        # EMA
+        dataframe['ema_l'] = pktalib.EMA(dataframe['close'], timeperiod=self.ema_period_l_exit.value)
+        dataframe['ema_s'] = pktalib.EMA(dataframe['close'], timeperiod=self.ema_period_s_exit.value)
+
+
+        # Volume Weighted
+        dataframe['volume_mean'] = dataframe['volume'].rolling(self.volume_check.value).mean().shift(1)
+        dataframe['volume_mean_exit'] = dataframe['volume'].rolling(self.volume_check_exit.value).mean().shift(1)
+
+        dataframe['volume_mean_s'] = dataframe['volume'].rolling(self.volume_check_s.value).mean().shift(1)
+        dataframe['volume_mean_exit_s'] = dataframe['volume'].rolling(self.volume_check_exit_s.value).mean().shift(1)
+        return dataframe
+    
+    def populate_entry_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
+
+        dataframe.loc[
+            (
+                        (dataframe['adx'] > self.adx_long_min.value) & # trend strength confirmation
+                        (dataframe['adx'] < self.adx_long_max.value) & # trend strength confirmation
+                        (dataframe['trend_l'] > 0) &
+                        (dataframe['volume'] > dataframe['volume_mean']) &
+                        (dataframe['volume'] > 0)
+
+            ),
+            'enter_long'] = 1
+
+        dataframe.loc[
+            (
+                        (dataframe['adx'] > self.adx_short_min.value) & # trend strength confirmation
+                        (dataframe['adx'] < self.adx_short_max.value) & # trend strength confirmation
+                        (dataframe['trend_s'] < 0) &
+                        (dataframe['volume'] > dataframe['volume_mean_s']) # volume weighted indicator
+            ),
+            'enter_short'] = 1
+        
+        return dataframe
+    
+    def populate_exit_trend(self, dataframe: pd.DataFrame, metadata: dict) -> pd.DataFrame:
+
+        conditions_long = []
+        conditions_short = []
+        dataframe.loc[:, 'exit_tag'] = ''
+
+        exit_long = (
+                # (dataframe['close'] < dataframe['low'].shift(self.sell_shift.value)) &
+                (dataframe['close'] < dataframe['ema_l']) &
+                (dataframe['volume'] > dataframe['volume_mean_exit'])
+        )
+
+        exit_short = (
+                # (dataframe['close'] > dataframe['high'].shift(self.sell_shift_short.value)) &
+                (dataframe['close'] > dataframe['ema_s']) &
+                (dataframe['volume'] > dataframe['volume_mean_exit_s'])
+        )
+
+
+        conditions_short.append(exit_short)
+        dataframe.loc[exit_short, 'exit_tag'] += 'exit_short'
+
+
+        conditions_long.append(exit_long)
+        dataframe.loc[exit_long, 'exit_tag'] += 'exit_long'
+
+
+        if conditions_long:
+            dataframe.loc[
+                pd.reduce(lambda x, y: x | y, conditions_long),
+                'exit_long'] = 1
+
+        if conditions_short:
+            dataframe.loc[
+                pd.reduce(lambda x, y: x | y, conditions_short),
+                'exit_short'] = 1
+            
+        return dataframe
 
     # Find accurate breakout value
     def findBreakingoutNow(self, df, fullData, saveDict, screenDict):
@@ -1929,7 +2097,7 @@ class ScreeningStatistics:
         return False
 
     # Validate LTP within limits
-    def validateLTP(self, df, screenDict, saveDict, minLTP=None, maxLTP=None):
+    def validateLTP(self, df, screenDict, saveDict, minLTP=None, maxLTP=None,minChange=0):
         data = df.copy()
         ltpValid = False
         if minLTP is None:
@@ -1962,8 +2130,11 @@ class ScreeningStatistics:
                 screenDict["Stock"] = colorText.FAIL + saveDict["Stock"] + colorText.END
         if ltp >= minLTP and ltp <= maxLTP:
             ltpValid = True
+            if minChange != 0:
+                # User has supplied some filter for percentage change
+                ltpValid = float(str(pct_save).replace("%","")) >= minChange
             saveDict["LTP"] = round(ltp, 2)
-            screenDict["LTP"] = colorText.GREEN + ("%.2f" % ltp) + colorText.END
+            screenDict["LTP"] = (colorText.GREEN if ltpValid else colorText.FAIL) + ("%.2f" % ltp) + colorText.END
             return ltpValid, verifyStageTwo
         screenDict["LTP"] = colorText.FAIL + ("%.2f" % ltp) + colorText.END
         saveDict["LTP"] = round(ltp, 2)
