@@ -172,9 +172,9 @@ original__stdout = sys.__stdout__
 # args.scanDaysInPast = 7
 # args.reScanForZeroSize = True
 # args.user = "-1001785195297"
-# args.skiplistlevel0 = "S,T,E,U,Z,H,Y,B,G,C"
+# args.skiplistlevel0 = "S,T,E,U,Z,H,Y,B,G,C,M,D,I,L"
 # args.skiplistlevel1 = "W,N,E,M,Z,0,2,3,4,6,7,9,10,13,15"
-# args.skiplistlevel2 = "0,22,27,28,29,30,31,42,M,Z"
+# args.skiplistlevel2 = "0,22,29,31,42,M,Z"
 # args.skiplistlevel3 = "0"
 # args.skiplistlevel4 = "0"
 # args.branchname = "actions-data-download"
@@ -208,7 +208,7 @@ noActionableArguments = not args.report and \
                         not args.cleanuphistoricalscans and \
                         not args.updateholidays
 if args.skiplistlevel0 is None:
-    args.skiplistlevel0 = ",".join(["S", "T", "E", "U", "Z", "B", "H", "Y", "G", "C"])
+    args.skiplistlevel0 = ",".join(["S", "T", "E", "U", "Z", "B", "H", "Y", "G", "C", "M", "D", "I", "L"])
 if args.skiplistlevel1 is None:
     args.skiplistlevel1 = ",".join(["W,N,E,M,Z,0,1,2,3,4,5,6,7,8,9,10,11,13,15"])
 if args.skiplistlevel2 is None:
@@ -221,9 +221,9 @@ if args.skiplistlevel4 is None:
 if noActionableArguments:
     # By default, just generate the report
     args.report = True
-    args.skiplistlevel0 = "S,T,E,U,Z,H,Y,X,G,C" 
+    args.skiplistlevel0 = "S,T,E,U,Z,H,Y,X,G,C,M,D,I,L" 
     args.skiplistlevel1 = "W,N,E,M,Z,0,2,3,4,6,7,9,10,13,15"
-    args.skiplistlevel2 = "0,21,22,27,28,29,30,42,M,Z"
+    args.skiplistlevel2 = "0,21,22,29,42,M,Z"
     args.skiplistlevel3 = "0"
     args.skiplistlevel4 = "0"
 
@@ -501,6 +501,7 @@ def triggerScanWorkflowActions(launchLocal=False, scanDaysInPast=0):
     # original_stdout = sys.stdout
     # original__stdout = sys.__stdout__
     commitFrequency = [21,34,55,89,144,200]
+    barometerTriggered = False
     for key in objectDictionary.keys():
         scanOptions = f'{objectDictionary[key]["td3"]}_D_D_D_D_D'
         branch = "main"
@@ -525,11 +526,27 @@ def triggerScanWorkflowActions(launchLocal=False, scanDaysInPast=0):
                 daysInPast -=1
             tryCommitOutcomes(options)
         else:
+            if not barometerTriggered and (PKDateUtilities.currentDateTime() < PKDateUtilities.currentDateTime(simulate=True,hour=9,minute=37)):
+                # Send the global market barometer trigger
+                barometerTriggered = True
+                resp = triggerRemoteScanAlertWorkflow("X:12 --barometer", branch)
+
+            # If the job got triggered before, let's wait until 9:37AM (3 min for job setup, so effectively it will be 9:40am)
+            while (PKDateUtilities.currentDateTime() < PKDateUtilities.currentDateTime(simulate=True,hour=9,minute=37)):
+                sleep(60) # Wait for 9:37AM
             resp = triggerRemoteScanAlertWorkflow(scanOptions, branch)
             if resp.status_code == 204:
                 sleep(5)
             else:
                 break
+    # Trigger the intraday analysis only in the 2nd half after it gets trigerred anytime after 3 PM IST
+    if PKDateUtilities.currentDateTime() >= PKDateUtilities.currentDateTime(simulate=True,hour=15,minute=00):
+        while (PKDateUtilities.currentDateTime() < PKDateUtilities.currentDateTime(simulate=True,hour=16,minute=15)):
+            print("Waiting for 4:15 PM IST...")
+            sleep(300) # Wait for 4:15 PM IST because the download data will take time and we need the downloaded data
+            # to be uploaded to actions-data-download folder on github before the intraday analysis can be run.
+        triggerRemoteScanAlertWorkflow("C:12: --runintradayanalysis -u -1001785195297", branch)
+
 
 def triggerRemoteScanAlertWorkflow(scanOptions, branch):
     cmd_options = scanOptions.replace("_",":")
@@ -568,7 +585,7 @@ def triggerRemoteScanAlertWorkflow(scanOptions, branch):
 
 def triggerHistoricalScanWorkflowActions(scanDaysInPast=0):
     defaultS1 = "W,N,E,M,Z,0,2,3,4,6,7,9,10,13,15" if args.skiplistlevel1 is None else args.skiplistlevel1
-    defaultS2 = "42,0,22,27,28,29,30,31,M,Z" if args.skiplistlevel2 is None else args.skiplistlevel2
+    defaultS2 = "42,0,22,29,31,M,Z" if args.skiplistlevel2 is None else args.skiplistlevel2
     runForIndices = [12,5,8,1,11,14]
     runForOptions = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,23,24,25,26]
     runForIndicesStr = ",".join(str(x) for x in runForIndices)
@@ -596,7 +613,7 @@ def triggerHistoricalScanWorkflowActions(scanDaysInPast=0):
                                 '{"ref":"'
                                 + branch
                                 + '","inputs":{"installtalib":"N","skipDownload":"Y","scanOptions":"'
-                                + f'--scanDaysInPast {scanDaysInPast} -s2 {skip2ListStr} -s1 {skip1ListStr} -s0 S,T,E,U,Z,H,Y,B,G,C -s3 {str(0)} -s4 {str(0)} --branchname actions-data-download --scans --local -f","name":"X_{index}_{option}"'
+                                + f'--scanDaysInPast {scanDaysInPast} -s2 {skip2ListStr} -s1 {skip1ListStr} -s0 S,T,E,U,Z,H,Y,B,G,C,M,D,I,L -s3 {str(0)} -s4 {str(0)} --branchname actions-data-download --scans --local -f","name":"X_{index}_{option}"'
                                 + ',"cleanuphistoricalscans":"N"}'
                                 + '}'
                                 )
@@ -610,7 +627,7 @@ def triggerHistoricalScanWorkflowActions(scanDaysInPast=0):
         '{"ref":"'
         + branch
         + '","inputs":{"installtalib":"N","skipDownload":"Y","scanOptions":"'
-        + '--scanDaysInPast 251 -s0 S,T,E,U,Z,H,Y,B,G,C -s1 W,N,E,M,Z,0,2,3,4,6,7,9,10,13,15 -s2 0,22,27,28,29,30,42,M,Z -s3 0 -s4 0 --branchname actions-data-download","name":"X_Cleanup"'
+        + '--scanDaysInPast 251 -s0 S,T,E,U,Z,H,Y,B,G,C,M,D,I,L -s1 W,N,E,M,Z,0,2,3,4,6,7,9,10,13,15 -s2 0,22,29,42,M,Z -s3 0 -s4 0 --branchname actions-data-download","name":"X_Cleanup"'
         + (',"cleanuphistoricalscans":"Y"}')
         + '}'
         )
@@ -835,6 +852,6 @@ if args.cleanuphistoricalscans:
     cleanuphistoricalscans(daysInPast)
 if args.updateholidays:
     updateHolidays()
-
+    
 print(f"{datetime.datetime.now(pytz.timezone('Asia/Kolkata'))}: All done!")
 sys.exit(0)

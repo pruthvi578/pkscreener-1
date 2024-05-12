@@ -32,6 +32,7 @@ from datetime import timedelta
 from PKDevTools.classes import Archiver
 from PKDevTools.classes.ColorText import colorText
 from PKDevTools.classes.log import default_logger
+from PKDevTools.classes.OutputControls import OutputControls
 
 import pkscreener.classes.ConfigManager as ConfigManager
 import pkscreener.classes.Fetcher as Fetcher
@@ -185,22 +186,30 @@ rm updater.sh
                     if float(now_components[3]) < float(version_components[3]):
                         prod_update = True
             if prod_update:
-                print(
+                if skipDownload:
+                    OutputControls().printOutput(
+                        colorText.BOLD
+                        + colorText.GREEN
+                        + f"    [+] A software update (v{tag} [{size} MB]) is available. Check out with the menu option U."
+                        + colorText.END
+                    )
+                    return
+                OutputControls().printOutput(
                     colorText.BOLD
                     + colorText.WARN
                     + "[+] What's New in this Update?\n"
+                    + colorText.END
+                    + colorText.GREEN
                     + OTAUpdater.showWhatsNew()
                     + colorText.END
                 )
-                if skipDownload:
-                    return
                 try:
                     action = input(
                             colorText.BOLD
-                            + colorText.GREEN
+                            + colorText.FAIL
                             + (
                                 "\n[+] New Software update (v%s) available. Download Now (Size: %dMB)? [Y/N]: "
-                                % (str(resp.json()["tag_name"]), size)
+                                % (str(tag), size)
                             )
                         )
                 except EOFError: # user pressed enter
@@ -216,16 +225,16 @@ rm updater.sh
                             OTAUpdater.updateForLinux(OTAUpdater.checkForUpdate.url)
                     except Exception as e:  # pragma: no cover
                         default_logger().debug(e, exc_info=True)
-                        print(
+                        OutputControls().printOutput(
                             colorText.BOLD
                             + colorText.WARN
                             + "[+] Error occured while updating!"
                             + colorText.END
                         )
                         raise (e)
-            elif not prod_update:
+            elif not prod_update and not skipDownload:
                 if tag.lower() == VERSION.lower():
-                    print(
+                    OutputControls().printOutput(
                         colorText.BOLD
                         + colorText.GREEN
                         + (
@@ -235,7 +244,7 @@ rm updater.sh
                         + colorText.END
                     )
                 else:
-                    print(
+                    OutputControls().printOutput(
                         colorText.BOLD
                         + colorText.FAIL
                         + (
@@ -248,8 +257,8 @@ rm updater.sh
         except Exception as e:  # pragma: no cover
             default_logger().debug(e, exc_info=True)
             if OTAUpdater.checkForUpdate.url is not None:
-                print(e)
-                print(
+                OutputControls().printOutput(e)
+                OutputControls().printOutput(
                     colorText.BOLD
                     + colorText.BLUE
                     + (
@@ -263,14 +272,14 @@ rm updater.sh
                     "[+] No exe/bin/run file as an update available!"
                 )
             if resp is not None and resp.json()["message"] == "Not Found":
-                print(
+                OutputControls().printOutput(
                     colorText.BOLD
                     + colorText.FAIL
                     + OTAUpdater.checkForUpdate.url
                     + colorText.END
                 )
-            print(e)
-            print(
+            OutputControls().printOutput(e)
+            OutputControls().printOutput(
                 colorText.BOLD
                 + colorText.FAIL
                 + "[+] Failure while checking update!"

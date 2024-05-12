@@ -44,7 +44,7 @@ on:
         description: 'Build docker image?'
         required: false
         type: string
-        default: 'Y'
+        default: 'N'
       targetPythonVersion:
         description: 'Target Python version: 3.9 , 3.10, 3.11 ?'
         required: false
@@ -181,6 +181,13 @@ jobs:
         with:
           ref: ${{ inputs.branch-name }}
 
+      - name: Activate virtualenv for MacOS
+        if: startsWith(runner.os, 'MacOS')
+        run: |
+          python3 -m venv venv
+          source venv/bin/activate
+          echo PATH=$PATH >> $GITHUB_ENV
+
       - name: Environment setup to get latest released version
         shell: bash
         id: releaseversiongetter
@@ -265,6 +272,8 @@ jobs:
 
       - name: Build for ${{ matrix.TARGET }}
         run: ${{ matrix.CMD_BUILD }}
+        env:
+          TF_ENABLE_ONEDNN_OPTS : 0
 
       - name: Test Built Binary for ${{ matrix.TARGET }}
         shell: bash

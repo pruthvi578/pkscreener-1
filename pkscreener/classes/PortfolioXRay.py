@@ -35,6 +35,7 @@ from pkscreener.classes.ConfigManager import parser, tools
 from pkscreener.classes.Portfolio import Portfolio, PortfolioCollection
 from pkscreener.classes.PKTask import PKTask
 from pkscreener.classes.PKScheduler import PKScheduler
+from PKDevTools.classes.OutputControls import OutputControls
 
 configManager = tools()
 configManager.getConfig(parser)
@@ -45,7 +46,7 @@ def summariseAllStrategies(testing=False):
     counter = 0
     for report in reports:
         counter += 1
-        print(f"Processing {counter} of {len(reports)}...")
+        OutputControls().printOutput(f"Processing {counter} of {len(reports)}...")
         df = bestStrategiesFromSummaryForReport(
             f"PKScreener_{report}_Insights_DateSorted.html", summary=True,includeLargestDatasets=True
         )
@@ -95,8 +96,10 @@ def bestStrategiesFromSummaryForReport(reportName: None, summary=False,includeLa
     dfs = []
     insights = None
     if "PKDevTools_Default_Log_Level" not in os.environ.keys():
-        if (("RUNNER" not in os.environ.keys()) or not configManager.showPastStrategyData):
+        if (("RUNNER" not in os.environ.keys())):
             return None
+    if not configManager.showPastStrategyData:
+        return None
     try:
         dfs = pd.read_html(
             "https://pkjmesra.github.io/PKScreener/Backtest-Reports/{0}".format(
@@ -282,8 +285,8 @@ def performXRay(*args, **kwargs):
         if df is None:
             return None
         df = cleanFormattingForStatsData(calcForDate, saveResults, df)
-        # print(f"All portfolios:\n{PortfolioCollection().portfoliosAsDataframe}")
-        # print(f"All portfoliosSummary:\n{PortfolioCollection().ledgerSummaryAsDataframe}")
+        # OutputControls().printOutput(f"All portfolios:\n{PortfolioCollection().portfoliosAsDataframe}")
+        # OutputControls().printOutput(f"All portfoliosSummary:\n{PortfolioCollection().ledgerSummaryAsDataframe}")
     if task is not None:
         if task.taskId > 0:
             task.progressStatusDict[task.taskId] = {'progress': 0, 'total': 1}
@@ -482,7 +485,7 @@ def statScanCalculations(userArgs, saveResults, periods,progressLabel:str=None):
     for task in tasksList:
         task.long_running_fn_args = (userArgs, saveResults, periods, scanResults)
     if configManager.enablePortfolioCalculations:
-        PKScheduler.scheduleTasks(tasksList,label=progressLabel,showProgressBars=True)
+        PKScheduler.scheduleTasks(tasksList,label=progressLabel,showProgressBars=True,timeout=600)
     else:
         for task in tasksList:
             task.long_running_fn(*(task,))
