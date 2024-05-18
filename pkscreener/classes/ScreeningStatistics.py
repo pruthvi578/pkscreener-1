@@ -216,7 +216,26 @@ class ScreeningStatistics:
         if diff.eq(0).any().any():
             diff += sflt.epsilon
         return diff
-
+    
+    # Find DEEL Momentum
+    def findHighMomentum(self, df):
+        #https://chartink.com/screener/deel-momentum-rsi-14-mfi-14-cci-14
+        if df is None or len(df) < 2:
+            return False
+        data = df.copy()
+        data = data.fillna(0)
+        data = data.replace([np.inf, -np.inf], 0)
+        data = data[::-1]  # Reverse the dataframe so that its the oldest date first
+        mfis = pktalib.MFI(data["High"],data["Low"],data["Close"],data["Volume"], 14)
+        ccis = pktalib.CCI(data["High"],data["Low"],data["Close"], 14)
+        recent = data.tail(2)
+        percentChange = round((recent["Close"].iloc[1] - recent["Close"].iloc[0]) *100/recent["Close"].iloc[0],1)
+        rsi = recent["RSI"].iloc[1]
+        mfi = mfis.tail(1).iloc[0]
+        cci = ccis.tail(1).iloc[0]
+        hasDeelMomentum = percentChange >= 1 and rsi>= 68 and mfi >= 68 and cci >= 110
+        return hasDeelMomentum
+    
     # Find ATR cross stocks
     def findATRCross(self, df,saveDict, screenDict):
         #https://chartink.com/screener/stock-crossing-atr
@@ -1202,14 +1221,14 @@ class ScreeningStatistics:
         if df is None or len(df) == 0:
             return False
         data = df.copy()
-        maRange = [10, 20, 50, 200]
+        maRange = [9, 10, 20, 50, 200] if maLength is None else [maLength]
         results = []
         hasReversals = False
         data = data[::-1]
         saved = self.findCurrentSavedValue(screenDict,saveDict, "MA-Signal")
         for maLength in maRange:
             dataCopy = data
-            if self.configManager.useEMA:
+            if self.configManager.useEMA or maLength == 9:
                 maRev = pktalib.EMA(dataCopy["Close"], timeperiod=maLength)
             else:
                 maRev = pktalib.MA(dataCopy["Close"], timeperiod=maLength)
@@ -1218,34 +1237,28 @@ class ScreeningStatistics:
             except Exception:# pragma: no cover
                 pass
             dataCopy.insert(len(dataCopy.columns), "maRev", maRev)
-            dataCopy = dataCopy[::-1].head(3)
-            if (
-                dataCopy.equals(
-                    dataCopy[
-                        (
-                            dataCopy.Close
-                            >= (dataCopy.maRev - (dataCopy.maRev * percentage))
-                        )
-                        & (
-                            dataCopy.Close
-                            <= (dataCopy.maRev + (dataCopy.maRev * percentage))
-                        )
-                    ]
-                )
-                and dataCopy.head(1)["Close"].iloc[0]
-                >= dataCopy.head(1)["maRev"].iloc[0]
-            ):
+            dataCopy = dataCopy[::-1].head(4)
+            bullishMAReversal = dataCopy["maRev"].iloc[0] >= dataCopy["maRev"].iloc[1] and \
+                dataCopy["maRev"].iloc[1] >= dataCopy["maRev"].iloc[2] and \
+                    dataCopy["maRev"].iloc[2] < dataCopy["maRev"].iloc[3]
+            bullishClose = dataCopy.head(1)["Close"].iloc[0] >= dataCopy.head(1)["maRev"].iloc[0]
+            bearishMAReversal = dataCopy["maRev"].iloc[0] <= dataCopy["maRev"].iloc[1] and \
+                dataCopy["maRev"].iloc[1] <= dataCopy["maRev"].iloc[2] and \
+                    dataCopy["maRev"].iloc[2] > dataCopy["maRev"].iloc[3]
+            isRecentCloseWithinPercentRange = dataCopy.equals(dataCopy[(dataCopy.Close >= (dataCopy.maRev - (dataCopy.maRev * percentage))) & (dataCopy.Close <= (dataCopy.maRev + (dataCopy.maRev * percentage)))])
+            if (isRecentCloseWithinPercentRange and bullishClose and bullishMAReversal) or \
+                (isRecentCloseWithinPercentRange and not bullishClose and bearishMAReversal):
                 hasReversals = True
                 results.append(str(maLength))
         if hasReversals:
             screenDict["MA-Signal"] = (
                 saved[0] 
                 + colorText.BOLD
-                + colorText.GREEN
-                + f"Reversal-[{','.join(results)}]MA"
+                + (colorText.GREEN if bullishMAReversal else (colorText.FAIL if bearishMAReversal else colorText.WARN))
+                + f"Reversal-[{','.join(results)}]{'EMA' if (maLength == 9 or self.configManager.useEMA) else 'MA'}"
                 + colorText.END
             )
-            saveDict["MA-Signal"] = saved[1] + f"Reversal-[{','.join(results)}]MA"
+            saveDict["MA-Signal"] = saved[1] + f"Reversal-[{','.join(results)}]{'EMA' if (maLength == 9 or self.configManager.useEMA) else 'MA'}"
         return hasReversals
 
     def findCurrentSavedValue(self, screenDict, saveDict, key):
@@ -1586,7 +1599,7 @@ class ScreeningStatistics:
         return False
 
     # @measure_time
-    def findUptrend(self, df, screenDict, saveDict, testing, stock,onlyMF=False,hostData=None,exchangeName="INDIA"):
+    def findUptrend(self, df, screenDict, saveDict, testing, stock,onlyMF=False,hostData=None,exchangeName="INDIA",refreshMFAndFV=True):
         # shouldProceed = True
         isUptrend = False
         isDowntrend = False
@@ -1629,40 +1642,42 @@ class ScreeningStatistics:
         dma50decision = 't:▲' if is50DMAUptrend else ('t:▼' if is50DMADowntrend else '')
         mf_inst_ownershipChange = 0
         change_millions =""
-        try:
-            mf_inst_ownershipChange = self.getMutualFundStatus(stock,onlyMF=onlyMF,hostData=hostData,force=(hostData is None or hostData.empty or not ("MF" in hostData.columns or "FII" in hostData.columns)),exchangeName=exchangeName)
-            if isinstance(mf_inst_ownershipChange, pd.Series):
-                mf_inst_ownershipChange = 0
-            roundOff = 2
-            millions = round(mf_inst_ownershipChange/1000000,roundOff)
-            while float(millions) == 0 and roundOff <=5:
-                roundOff +=1
-                millions = round(mf_inst_ownershipChange/1000000,roundOff)
-            change_millions = f"({millions}M)"
-        except Exception as e:  # pragma: no cover
-            self.default_logger.debug(e, exc_info=True)
-            pass
-        try:
-            #Let's get the fair value, either saved or fresh from service
-            fairValue = self.getFairValue(stock,hostData,force=(hostData is None or hostData.empty or "FairValue" not in hostData.columns),exchangeName=exchangeName)
-            if fairValue is not None and fairValue != 0:
-                ltp = saveDict["LTP"]
-                fairValueDiff = round(fairValue - ltp,0)
-                saveDict["FairValue"] = str(fairValue)
-                saveDict["FVDiff"] = fairValueDiff
-                screenDict["FVDiff"] = fairValueDiff
-                screenDict["FairValue"] = (colorText.GREEN if fairValue >= ltp else colorText.FAIL) + saveDict["FairValue"] + colorText.END
-        except Exception as e:  # pragma: no cover
-            self.default_logger.debug(e, exc_info=True)
-            pass
         mf = ""
         mfs = ""
-        if mf_inst_ownershipChange > 0:
-            mf = f"MFI:▲ {change_millions}"
-            mfs = colorText.GREEN + mf + colorText.END
-        elif mf_inst_ownershipChange < 0:
-            mf = f"MFI:▼ {change_millions}"
-            mfs = colorText.FAIL + mf + colorText.END
+        if refreshMFAndFV:
+            try:
+                mf_inst_ownershipChange = self.getMutualFundStatus(stock,onlyMF=onlyMF,hostData=hostData,force=(hostData is None or hostData.empty or not ("MF" in hostData.columns or "FII" in hostData.columns)),exchangeName=exchangeName)
+                if isinstance(mf_inst_ownershipChange, pd.Series):
+                    mf_inst_ownershipChange = 0
+                roundOff = 2
+                millions = round(mf_inst_ownershipChange/1000000,roundOff)
+                while float(millions) == 0 and roundOff <=5:
+                    roundOff +=1
+                    millions = round(mf_inst_ownershipChange/1000000,roundOff)
+                change_millions = f"({millions}M)"
+            except Exception as e:  # pragma: no cover
+                self.default_logger.debug(e, exc_info=True)
+                pass
+            try:
+                #Let's get the fair value, either saved or fresh from service
+                fairValue = self.getFairValue(stock,hostData,force=(hostData is None or hostData.empty or "FairValue" not in hostData.columns),exchangeName=exchangeName)
+                if fairValue is not None and fairValue != 0:
+                    ltp = saveDict["LTP"]
+                    fairValueDiff = round(fairValue - ltp,0)
+                    saveDict["FairValue"] = str(fairValue)
+                    saveDict["FVDiff"] = fairValueDiff
+                    screenDict["FVDiff"] = fairValueDiff
+                    screenDict["FairValue"] = (colorText.GREEN if fairValue >= ltp else colorText.FAIL) + saveDict["FairValue"] + colorText.END
+            except Exception as e:  # pragma: no cover
+                self.default_logger.debug(e, exc_info=True)
+                pass
+            
+            if mf_inst_ownershipChange > 0:
+                mf = f"MFI:▲ {change_millions}"
+                mfs = colorText.GREEN + mf + colorText.END
+            elif mf_inst_ownershipChange < 0:
+                mf = f"MFI:▼ {change_millions}"
+                mfs = colorText.FAIL + mf + colorText.END
 
         saved = self.findCurrentSavedValue(screenDict,saveDict,"Trend")
         decision_scr = (colorText.GREEN if isUptrend else (colorText.FAIL if isDowntrend else colorText.WARN)) + f"{decision}" + colorText.END
@@ -1742,10 +1757,14 @@ class ScreeningStatistics:
                     pass
                 try:
                     latest_mfdate = hostData.loc[hostData.index[-1],"MF_Date"]
+                    if isinstance(latest_mfdate, float):
+                        latest_mfdate = datetime.datetime.fromtimestamp(latest_mfdate).strftime('%Y-%m-%d')
                 except (KeyError,IndexError):
                     pass
                 try:
                     latest_instdate = hostData.loc[hostData.index[-1],"FII_Date"]
+                    if isinstance(latest_instdate, float):
+                        latest_instdate = datetime.datetime.fromtimestamp(latest_instdate).strftime('%Y-%m-%d')
                 except (KeyError,IndexError):
                     pass
                 if latest_mfdate is not None:
@@ -2572,8 +2591,8 @@ class ScreeningStatistics:
                 saveDict[f"Growth{prd}"] = round(ltpTdy - prevLtp, 2)
                 if prd == 22 or (prd == requestedPeriod):
                     changePercent = round(((prevLtp-ltpTdy) if requestedPeriod ==0 else (ltpTdy - prevLtp))*100/ltpTdy, 2)
-                    saveDict[f"{prd}-Pd %"] = f"{changePercent}%"
-                    screenDict[f"{prd}-Pd %"] = (colorText.GREEN if changePercent >=0 else colorText.FAIL) + f"{changePercent}%" + colorText.END
+                    saveDict[f"{prd}-Pd %"] = f"{changePercent}%" if not pd.isna(changePercent) else '-'
+                    screenDict[f"{prd}-Pd %"] = ((colorText.GREEN if changePercent >=0 else colorText.FAIL) + f"{changePercent}%" + colorText.END) if not pd.isna(changePercent) else '-'
                 screenDict["Date"] = calc_date
                 saveDict["Date"] = calc_date
             else:

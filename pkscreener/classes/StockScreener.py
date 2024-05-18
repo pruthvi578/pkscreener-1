@@ -442,7 +442,8 @@ class StockScreener:
                                 stock,
                                 onlyMF=(executeOption == 21 and reversalOption in [5,6]),
                                 hostData=data,
-                                exchangeName=exchangeName
+                                exchangeName=exchangeName,
+                                refreshMFAndFV=(menuOption in ["X"])
                             )
                             hostRef.objectDictionaryPrimary[stock] = data.to_dict("split")
                 except np.RankWarning as e: # pragma: no cover 
@@ -546,7 +547,7 @@ class StockScreener:
                         or (executeOption == 9 and hasMinVolumeRatio)
                         or (executeOption == 10 and isPriceRisingByAtLeast2Percent)
                         or (executeOption == 11 and isShortTermBullish)
-                        or (executeOption in [12,13,14,15,16,17,18,19,20,23,24,25,27,28,30] and isValidityCheckMet)
+                        or (executeOption in [12,13,14,15,16,17,18,19,20,23,24,25,27,28,30,31,32] and isValidityCheckMet)
                         or (executeOption == 21 and (mfiStake > 0 and reversalOption in [3,5]))
                         or (executeOption == 21 and (mfiStake < 0 and reversalOption in [6,7]))
                         or (executeOption == 21 and (fairValueDiff > 0 and reversalOption in [8]))
@@ -554,7 +555,7 @@ class StockScreener:
                         or (executeOption == 26)
                         or (executeOption == 29) and bidGreaterThanAsk
                     ):
-                        isNotMonitoringDashboard = userArgs.monitor is None
+                        isNotMonitoringDashboard = userArgs.monitor is None or (userArgs.monitor is not None and "~" not in userArgs.monitor)
                         # Now screen for common ones to improve performance
                         if isNotMonitoringDashboard and not (executeOption == 6 and reversalOption == 7):
                             if sys.version_info >= (3, 11):
@@ -681,7 +682,7 @@ class StockScreener:
 
     def performValidityCheckForExecuteOptions(self,executeOption,screener,fullData,screeningDictionary,saveDictionary,processedData,configManager,buySellAll=3):
         isValid = True
-        if executeOption not in [11,12,13,14,15,16,17,18,19,20,23,24,25,27,28,30]:
+        if executeOption not in [11,12,13,14,15,16,17,18,19,20,23,24,25,27,28,30,31,32]:
             return True
         if executeOption == 11:
             isValid = screener.validateShortTermBullish(
@@ -723,7 +724,8 @@ class StockScreener:
             isValid = screener.findHigherBullishOpens(processedData)
         elif executeOption == 30: # findBuySellSignalsFromATRTrailing # findATRTrailingStops
             isValid = screener.findATRTrailingStops(fullData,sensitivity=configManager.atrTrailingStopSensitivity, atr_period=configManager.atrTrailingStopPeriod,ema_period=configManager.atrTrailingStopEMAPeriod,buySellAll=buySellAll,saveDict=saveDictionary,screenDict=screeningDictionary)
-        
+        elif executeOption == 31: # findBuySellSignalsFromATRTrailing # findATRTrailingStops
+            isValid = screener.findHighMomentum(processedData)
         return isValid        
                     
     def performBasicVolumeChecks(self, executeOption, volumeRatio, screeningDictionary, saveDictionary, processedData, configManager, screener):
@@ -864,15 +866,18 @@ class StockScreener:
             except (ValueError, AssertionError) as e:
                 # 9 columns passed, passed data had 11 columns
                 # 10 columns passed, passed data had 11 columns
-                hostRef.default_logger.debug(e, exc_info=True)
-                e_diff = str(e).replace(" columns passed, passed data had ",",").replace(" columns","").split(",")
-                num_diff = int(e_diff[1]) - int(e_diff[0])
-                while (num_diff > 0):
-                    columns.append(f"temp{num_diff}")
-                    num_diff -= 1
-                data = pd.DataFrame(
-                        hostData["data"], columns=columns, index=hostData["index"]
-                    )
+                excLookingFor = " columns passed, passed data had "
+                if excLookingFor in str(e):
+                    e_diff = str(e).replace(excLookingFor,",").replace(" columns","").split(",")
+                    num_diff = int(e_diff[1]) - int(e_diff[0])
+                    while (num_diff > 0):
+                        columns.append(f"temp{num_diff}")
+                        num_diff -= 1
+                    data = pd.DataFrame(
+                            hostData["data"], columns=columns, index=hostData["index"]
+                        )
+                else:
+                    hostRef.default_logger.debug(e, exc_info=True)
                 pass
 
         if ((shouldCache and not self.isTradingTime and (hostData is None  or hostDataLength == 0)) or downloadOnly) \

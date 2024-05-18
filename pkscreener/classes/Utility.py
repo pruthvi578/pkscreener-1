@@ -27,6 +27,7 @@ import datetime
 import glob
 import math
 import os
+import shutil
 import sys
 import textwrap
 import random
@@ -839,6 +840,7 @@ class tools:
                             stockDict[stock] = taskResult.to_dict("split")
                             processedStocks.append(stock)
         leftOutStocks = list(set(stockCodes)-set(processedStocks))
+        default_logger().debug(f"Attempted fresh download of {len(stockCodes)} stocks and downloaded {len(processedStocks)} stocks. {len(leftOutStocks)} stocks remaining.")
         return stockDict, leftOutStocks
 
     def loadStockData(
@@ -873,11 +875,15 @@ class tools:
             # We don't want to download from local stale pkl file or stale file at server
             return stockDict
         
-        default_logger().info(
+        default_logger().debug(
             f"Stock data cache file:{cache_file} exists ->{str(exists)}"
         )
         stockDataLoaded = False
-        if exists and not forceRedownload:
+        copyFilePath = os.path.join(Archiver.get_user_outputs_dir(), f"copy_{cache_file}")
+        srcFilePath = os.path.join(Archiver.get_user_outputs_dir(), cache_file)
+        if os.path.exists(copyFilePath):
+            shutil.copy(copyFilePath,srcFilePath) # copy is the saved source of truth
+        if os.path.exists(srcFilePath) and not forceRedownload:
             stockDict, stockDataLoaded = tools.loadDataFromLocalPickle(stockDict,configManager, downloadOnly, defaultAnswer, exchangeSuffix, cache_file, isTrading)
         if (
             not stockDataLoaded
@@ -904,9 +910,8 @@ class tools:
 
     def loadDataFromLocalPickle(stockDict, configManager, downloadOnly, defaultAnswer, exchangeSuffix, cache_file, isTrading):
         stockDataLoaded = False
-        with open(
-                os.path.join(Archiver.get_user_outputs_dir(), cache_file), "rb"
-            ) as f:
+        srcFilePath = os.path.join(Archiver.get_user_outputs_dir(), cache_file)
+        with open(srcFilePath, "rb") as f:
             try:
                 stockData = pickle.load(f)
                 if not downloadOnly:
@@ -1088,6 +1093,12 @@ class tools:
                                     # and so, was not found in stockDict
                                 continue
                         stockDataLoaded = True
+                        copyFilePath = os.path.join(Archiver.get_user_outputs_dir(), f"copy_{cache_file}")
+                        srcFilePath = os.path.join(Archiver.get_user_outputs_dir(), cache_file)
+                        if os.path.exists(copyFilePath) and os.path.exists(srcFilePath):
+                            shutil.copy(copyFilePath,srcFilePath) # copy is the saved source of truth
+                        if not os.path.exists(copyFilePath) and os.path.exists(srcFilePath): # Let's make a copy of the original one
+                            shutil.copy(srcFilePath,copyFilePath)
                         # Remove the progress bar now!
                         sys.stdout.write("\x1b[1A")  # cursor up one line
                         sys.stdout.write("\x1b[2K")  # delete the last line
@@ -1133,8 +1144,8 @@ class tools:
                     input(
                         colorText.BOLD
                         + colorText.WARN
-                        + "[>] Do you want to save the results in excel file? [Y/N]: "
-                    )
+                        + "[>] Do you want to save the results in excel file? [Y/N](Default:Y): "
+                    ) or "Y"
                 ).upper()
             else:
                 response = defaultAnswer
@@ -1216,9 +1227,8 @@ class tools:
                         + colorText.WARN
                         + "[>] "
                         + cache_file
-                        + " already exists. Do you want to replace this? [Y/N]: "
-                    )
-                ).upper()
+                        + " already exists. Do you want to replace this? [Y/N] (Default: Y): "
+                ) or "Y").upper()
             else:
                 response = defaultAnswer
         except ValueError as e:  # pragma: no cover
@@ -1228,21 +1238,22 @@ class tools:
 
     # Prompt for asking RSI
     def promptRSIValues():
+        tools.clearScreen(forceTop=True)
         try:
             minRSI, maxRSI = int(
                 input(
                     colorText.BOLD
                     + colorText.WARN
-                    + "\n[+] Enter Min RSI value: "
+                    + "\n[+] Enter Min RSI value (Default=55): "
                     + colorText.END
-                )
+                ) or 55
             ), int(
                 input(
                     colorText.BOLD
                     + colorText.WARN
-                    + "[+] Enter Max RSI value: "
+                    + "[+] Enter Max RSI value (Default=68): "
                     + colorText.END
-                )
+                ) or "68"
             )
             if (
                 (minRSI >= 0 and minRSI <= 100)
@@ -1257,6 +1268,7 @@ class tools:
 
     # Prompt for asking CCI
     def promptCCIValues(minCCI=None, maxCCI=None):
+        tools.clearScreen(forceTop=True)
         if minCCI is not None and maxCCI is not None:
             return minCCI, maxCCI
         try:
@@ -1264,16 +1276,16 @@ class tools:
                 input(
                     colorText.BOLD
                     + colorText.WARN
-                    + "\n[+] Enter Min CCI value: "
+                    + "\n[+] Enter Min CCI value (Default=110): "
                     + colorText.END
-                )
+                ) or "110"
             ), int(
                 input(
                     colorText.BOLD
                     + colorText.WARN
-                    + "[+] Enter Max CCI value: "
+                    + "[+] Enter Max CCI value (Default=300): "
                     + colorText.END
-                )
+                ) or "300"
             )
             if minCCI <= maxCCI:
                 return (minCCI, maxCCI)
@@ -1284,6 +1296,7 @@ class tools:
 
     # Prompt for asking Volume ratio
     def promptVolumeMultiplier(volumeRatio=None):
+        tools.clearScreen(forceTop=True)
         if volumeRatio is not None:
             return volumeRatio
         try:
@@ -1293,7 +1306,7 @@ class tools:
                     + colorText.WARN
                     + "\n[+] Enter Min Volume ratio value (Default = 2.5): "
                     + colorText.END
-                )
+                ) or "2.5"
             )
             if volumeRatio > 0:
                 return volumeRatio
@@ -1303,11 +1316,13 @@ class tools:
             return 2
 
     def promptMenus(menu):
+        tools.clearScreen(forceTop=True)
         m = menus()
         m.level = menu.level if menu is not None else 0
         return m.renderForMenu(menu)
 
     def promptChartPatternSubMenu(menu,respChartPattern):
+        tools.clearScreen(forceTop=True)
         m3 = menus()
         m3.renderForMenu(menu,asList=True)
         lMenu =  m3.find(str(respChartPattern))
@@ -1324,7 +1339,7 @@ class tools:
                     + colorText.WARN
                     + """[+] Select Option:"""
                     + colorText.END
-                )
+                ) or "1"
             )
             if resp >= 0 and resp <= 10:
                 return resp
@@ -1349,18 +1364,19 @@ class tools:
                     + colorText.WARN
                     + """[+] Select Option:"""
                     + colorText.END
-                )
+                ) or "3"
             )
             if resp >= 0 and resp <= 10:
                 if resp == 4:
                     try:
+                        defaultMALength = 9 if configManager.duration.endswith("m") else 50
                         maLength = int(
                             input(
                                 colorText.BOLD
                                 + colorText.WARN
-                                + "\n[+] Enter MA Length (E.g. 50 or 200): "
+                                + f"\n[+] Enter MA Length (E.g. 9,10,20,50 or 200) (Default={defaultMALength}): "
                                 + colorText.END
-                            )
+                            ) or str(defaultMALength)
                         )
                         return resp, maLength
                     except ValueError as e:  # pragma: no cover
@@ -1378,9 +1394,9 @@ class tools:
                             input(
                                 colorText.BOLD
                                 + colorText.WARN
-                                + "\n[+] Enter NR timeframe [Integer Number] (E.g. 4, 7, etc.): "
+                                + "\n[+] Enter NR timeframe [Integer Number] (E.g. 4, 7, etc.) (Default=4): "
                                 + colorText.END
-                            )
+                            ) or "4"
                         )
                         return resp, maLength
                     except ValueError as e:  # pragma: no cover
@@ -1419,16 +1435,16 @@ class tools:
                     + colorText.WARN
                     + """[+] Select Option:"""
                     + colorText.END
-                )
+                ) or "3"
             )
             if resp == 1 or resp == 2:
                 candles = int(
                     input(
                         colorText.BOLD
                         + colorText.WARN
-                        + "\n[+] How many candles (TimeFrame) to look back Inside Bar formation? : "
+                        + "\n[+] How many candles (TimeFrame) to look back Inside Bar formation? (Default=3): "
                         + colorText.END
-                    )
+                    ) or "3"
                 )
                 return (resp, candles)
             if resp == 3:
@@ -1436,9 +1452,9 @@ class tools:
                     input(
                         colorText.BOLD
                         + colorText.WARN
-                        + "\n[+] Enter Percentage within which all MA/EMAs should be (Ideal: 1-2%)? : "
+                        + "\n[+] Enter Percentage within which all MA/EMAs should be (Ideal: 1-2%)? (Default=2): "
                         + colorText.END
-                    )
+                    ) or "2"
                 )
                 return (resp, percent / 100.0)
             if resp >= 0 and resp <= 7:

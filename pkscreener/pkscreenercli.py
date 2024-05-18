@@ -165,6 +165,9 @@ argParser.add_argument(
     "-m",
     "--monitor",
     help="Monitor for intraday scanners and their results.",
+    nargs='?',
+    const='X',
+    type=str,
     required=False,
 )
 argParser.add_argument(
@@ -208,6 +211,18 @@ argParser.add_argument(
     required=False,
 )
 argParser.add_argument(
+    "--singlethread",
+    action="store_true",
+    help="Run analysis for debugging purposes in a single process, single threaded environment",
+    required=False,
+)
+argParser.add_argument(
+    "--systemlaunched",
+    action="store_true",
+    help="Indicator to show that this is a system launched screener, using os.system",
+    required=False,
+)
+argParser.add_argument(
     "-t",
     "--testbuild",
     action="store_true",
@@ -234,8 +249,21 @@ argParser.add_argument(
     required=False,
 )
 argParser.add_argument("-v", action="store_true")  # Dummy Arg for pytest -v
+argParser.add_argument(
+    "--pipedtitle",
+    help="Piped Titles",
+    required=False,
+)
+argParser.add_argument(
+    "--pipedmenus",
+    help="Piped Menus",
+    required=False,
+)
 argsv = argParser.parse_known_args()
 args = argsv[0]
+# if sys.argv[0].endswith(".py"):
+#     args.monitor = 'X'
+#     args.answerdefault = 'Y'
 results = None
 resultStocks = None
 plainResults = None
@@ -244,7 +272,7 @@ dbTimestamp = None
 elapsed_time = None
 configManager = ConfigManager.tools()
 
-def removeMonitorFile():
+def exitGracefully():
     from PKDevTools.classes import Archiver
     from pkscreener.globals import resetConfigToDefault
     filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs")
@@ -255,10 +283,17 @@ def removeMonitorFile():
         except:
             pass
         index += 1
+
     argsv = argParser.parse_known_args()
     args = argsv[0]
     if args is not None and args.options is not None and not args.options.upper().startswith("T"):
         resetConfigToDefault()
+        
+    if "PKDevTools_Default_Log_Level" in os.environ.keys():
+        if args is None or (args is not None and args.options is not None and "|" not in args.options):
+            del os.environ['PKDevTools_Default_Log_Level']
+    configManager.logsEnabled = False
+    configManager.setConfig(ConfigManager.parser,default=True,showFileCreatedText=False)
 
 def logFilePath():
     try:
@@ -327,8 +362,19 @@ def runApplication():
     from pkscreener.globals import main, sendQuickScanResult,sendMessageToTelegramChannel, sendGlobalMarketBarometer, updateMenuChoiceHierarchy, isInterrupted, refreshStockData, closeWorkersAndExit
     # From a previous call to main with args, it may have been mutated.
     # Let's stock to the original args passed by user
+    try:
+        savedPipedArgs = None
+        savedPipedArgs = args.pipedmenus if args is not None and args.pipedmenus is not None else None
+    except:
+        pass
     argsv = argParser.parse_known_args()
     args = argsv[0]
+    if args.systemlaunched:
+        args.systemlaunched = args.options
+    # if sys.argv[0].endswith(".py"):
+    #     args.monitor = 'X'
+    #     args.answerdefault = 'Y'
+    args.pipedmenus = savedPipedArgs
     if args.options is not None:
         args.options = args.options.replace("::",":")
     if args.runintradayanalysis:
@@ -407,19 +453,9 @@ def runApplication():
                         start_time = time.time()
                 monitorOption_org = MarketMonitor().currentMonitorOption()
                 monitorOption = monitorOption_org
-                lastComponent = monitorOption.split(":")[-1]
-                # previousCandleDuration = configManager.duration
-                if "i" in lastComponent:
-                    # We need to switch to intraday scan
-                    monitorOption = monitorOption.replace(lastComponent,"")
-                    args.intraday = lastComponent.replace("i","").strip()
-                    configManager.toggleConfig(candleDuration=args.intraday, clearCache=False)
-                else:
-                    # We need to switch to daily scan
-                    args.intraday = None
-                    configManager.toggleConfig(candleDuration='1d', clearCache=False)
+                monitorOption = checkIntradayComponent(args, monitorOption)
                 if monitorOption.startswith("|"):
-                    monitorOption = monitorOption.replace("|","")
+                    monitorOption = monitorOption[1:]
                     monitorOptions = monitorOption.split(":")
                     if monitorOptions[1] != "0":
                         monitorOptions[1] = "0"
@@ -432,7 +468,13 @@ def runApplication():
                             srcIndex = int(srcIndex)
                             # Let's get the previously saved result for the monitor
                             savedStocks = MarketMonitor().monitorResultStocks[str(srcIndex)]
-                            monitorOption = f"{monitorOption}:{savedStocks}"
+                            innerPipes = monitorOption.split("|")
+                            nextPipe = innerPipes[0]
+                            nextMonitor = nextPipe.split(">")[0]
+                            innerPipes[0] = f"{nextMonitor}:{savedStocks}"
+                            monitorOption = ":>|".join(innerPipes)
+                            monitorOption = monitorOption.replace("::",":").replace(":>:>",":>")
+                            # monitorOption = f"{monitorOption}:{savedStocks}:"
                         except:
                             # Probably wrong (non-integer) index passed. Let's continue anyway
                             pass
@@ -444,37 +486,78 @@ def runApplication():
                 if (MarketMonitor().monitorIndex == 1 and args.options is not None and plainResults is not None):
                     # Load the stock data afresh for each cycle
                     refreshStockData(args.options)
-            try: 
+            try:
                 results = None
                 plainResults = None
                 resultStocks = None
                 results, plainResults = main(userArgs=args)
+                if args.pipedmenus is not None:
+                    while args.pipedmenus is not None:
+                        results, plainResults = main(userArgs=args)
+                    sys.exit(0)
                 if isInterrupted():
                     closeWorkersAndExit()
-                    removeMonitorFile()
+                    exitGracefully()
                     sys.exit(0)
-                while pipeResults(plainResults,args):
-                    results, plainResults = main(userArgs=args)
+                runPipedScans = True
+                while runPipedScans:
+                    runPipedScans = pipeResults(plainResults,args)
+                    if runPipedScans:
+                        results, plainResults = main(userArgs=args)
+                    else:
+                        if args is not None and args.pipedtitle is not None and "|" in args.pipedtitle:
+                            OutputControls().printOutput(
+                                    colorText.WARN
+                                    + f"[+] Pipe Results Found: {args.pipedtitle}. {'Reduce number of piped scans if no stocks could be found.' if '[0]' in args.pipedtitle else ''}"
+                                    + colorText.END
+                                )
+                            if args.answerdefault is None:
+                                input("Press <Enter> to continue...")
             except SystemExit:
                 closeWorkersAndExit()
-                removeMonitorFile()
+                exitGracefully()
                 sys.exit(0)
             except Exception as e:
                 default_logger().debug(e, exc_info=True)
                 # Probably user cancelled an operation by choosing a cancel sub-menu somewhere
                 pass
             if plainResults is not None and not plainResults.empty:
+                try:
+                    plainResults.set_index("Stock", inplace=True)
+                except:
+                    pass
+                try:
+                    results.set_index("Stock", inplace=True)
+                except:
+                    pass
                 plainResults = plainResults[~plainResults.index.duplicated(keep='first')]
                 results = results[~results.index.duplicated(keep='first')]
                 resultStocks = plainResults.index
-            if args.monitor:
+            if args.monitor is not None:
                 MarketMonitor().saveMonitorResultStocks(plainResults)
-            if results is not None and args.monitor and len(monitorOption_org) > 0:
-                MarketMonitor().refresh(screen_df=results,screenOptions=monitorOption_org, chosenMenu=updateMenuChoiceHierarchy(),dbTimestamp=f"{dbTimestamp} | CycleTime:{elapsed_time}s",telegram=args.telegram)
+                if results is not None and len(monitorOption_org) > 0:
+                    chosenMenu = args.pipedtitle if args.pipedtitle is not None else updateMenuChoiceHierarchy()
+                    MarketMonitor().refresh(screen_df=results,screenOptions=monitorOption_org, chosenMenu=chosenMenu[:120],dbTimestamp=f"{dbTimestamp} | CycleTime:{elapsed_time}s",telegram=args.telegram)
+
+def checkIntradayComponent(args, monitorOption):
+    lastComponent = monitorOption.split(":")[-1]
+                # previousCandleDuration = configManager.duration
+    if "i" in lastComponent:
+                    # We need to switch to intraday scan
+        monitorOption = monitorOption.replace(lastComponent,"")
+        args.intraday = lastComponent.replace("i","").strip()
+        configManager.toggleConfig(candleDuration=args.intraday, clearCache=False)
+        # args.options = f"{monitorOption}:{args.options[len(lastComponent):]}"
+    else:
+                    # We need to switch to daily scan
+        args.intraday = None
+        configManager.toggleConfig(candleDuration='1d', clearCache=False)
+    return monitorOption
 
 
 def pipeResults(prevOutput,args):
-    nextOnes = args.options.split(";")
+    nextOnes = args.options.split(">")
+    hasFoundStocks = False
     if len(nextOnes) > 1:
         monitorOption = nextOnes[1]
         if len(monitorOption) == 0:
@@ -497,13 +580,20 @@ def pipeResults(prevOutput,args):
                 monitorOption = ":".join(monitorOptions)
             # We need to pipe the output from previous run into the next one
             if prevOutput is not None and not prevOutput.empty:
+                try:
+                    prevOutput.set_index("Stock", inplace=True)
+                except:
+                    pass
                 prevOutput_results = prevOutput[~prevOutput.index.duplicated(keep='first')]
                 prevOutput_results = prevOutput_results.index
+                hasFoundStocks = len(prevOutput_results) > 0
                 prevOutput_results = ",".join(prevOutput_results)
+                monitorOption = monitorOption.replace(":D:",":")
                 monitorOption = f"{monitorOption}:{prevOutput_results}"
         args.options = monitorOption.replace("::",":")
-        args.options = args.options + ":D:;".join(nextOnes[2:])
-        return True
+        args.options = args.options + ":D:>" + ":D:>".join(nextOnes[2:])
+        args.options = args.options.replace("::",":")
+        return True and hasFoundStocks
     return False
 
 def pkscreenercli():
@@ -521,12 +611,14 @@ def pkscreenercli():
             pass
 
     OutputControls(enableMultipleLineOutput=(args.monitor is None)).printOutput("",end="\r")
-        
+    
     configManager.getConfig(ConfigManager.parser)
+    import atexit
+    atexit.register(exitGracefully)
     # configManager.restartRequestsCache()
     # args.monitor = configManager.defaultMonitorOptions
     if args.monitor is not None:
-        MarketMonitor(monitors=args.monitor.split(",") if len(args.monitor)>5 else configManager.defaultMonitorOptions.split(","),
+        MarketMonitor(monitors=args.monitor.split("~") if len(args.monitor)>5 else configManager.defaultMonitorOptions.split("~"),
                       maxNumResultsPerRow=configManager.maxDashboardWidgetsPerRow,
                       maxNumColsInEachResult=6,
                       maxNumRowsInEachResult=10,
@@ -561,17 +653,18 @@ def pkscreenercli():
         configManager.setConfig(
             ConfigManager.parser, default=True, showFileCreatedText=False
         )
+    if args.systemlaunched:
+        args.systemlaunched = args.options
+        
     if args.telegram:
         # Launched by bot for intraday monitor?
         if (PKDateUtilities.isTradingTime() and not PKDateUtilities.isTodayHoliday()[0]) or ("PKDevTools_Default_Log_Level" in os.environ.keys()):
             from PKDevTools.classes import Archiver
-            filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs_0.txt")
+            filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs_1.txt")
             if os.path.exists(filePath):
-                default_logger().info("monitor_outputs_0.txt already exists! This means an instance may already be running. Exiting now...")
+                default_logger().info("monitor_outputs_1.txt already exists! This means an instance may already be running. Exiting now...")
                 # Since the file exists, it means, there is another instance running
                 sys.exit(0)
-            import atexit
-            atexit.register(removeMonitorFile)
         else:
             # It should have been launched only during the trading hours
             default_logger().info("--telegram option must be launched ONLY during NSE trading hours. Exiting now...")
@@ -618,7 +711,7 @@ def pkscreenercli():
         runApplication()
         from pkscreener.globals import closeWorkersAndExit
         closeWorkersAndExit()
-        removeMonitorFile()
+        exitGracefully()
         sys.exit(0)
     else:
         runApplicationForScreening()
@@ -643,11 +736,11 @@ def runApplicationForScreening():
             disableSysOut(disable=False)
             return
         closeWorkersAndExit()
-        removeMonitorFile()
+        exitGracefully()
         sys.exit(0)
     except SystemExit:
         closeWorkersAndExit()
-        removeMonitorFile()
+        exitGracefully()
         sys.exit(0)
     except (RuntimeError, Exception) as e:  # pragma: no cover
         default_logger().debug(e, exc_info=True)
@@ -662,7 +755,7 @@ def runApplicationForScreening():
             disableSysOut(disable=False)
             return
         closeWorkersAndExit()
-        removeMonitorFile()
+        exitGracefully()
         sys.exit(0)
 
 
