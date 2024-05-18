@@ -34,6 +34,8 @@ from pkscreener.classes import VERSION
 configManager = ConfigManager.tools()
 MENU_SEPARATOR = ""
 LINE_SEPARATOR = "\n"
+MAX_SUPPORTED_MENU_OPTION = 33
+MAX_MENU_OPTION = 41
 
 level0MenuDict = {
     "X": "Scanners",
@@ -42,6 +44,7 @@ level0MenuDict = {
     "B": "Backtests",
     "G": "Growth of 10k",
     "C": "Analyse morning vs close outcomes",
+    "P": "Piped Scanners",
     "T": "~",
     "D": "Download Daily OHLC Data for the Past Year",
     "I": "Download Intraday OHLC Data for the Last Trading Day",
@@ -52,6 +55,47 @@ level0MenuDict = {
     "H": "Help / About Developer",
     "Z": "Exit (Ctrl + C)",
 }
+level1_P_MenuDict = {
+    "1": "Predefined Piped Scanners",
+    "2": "Define my custom Piped Scanner",
+    "3": "Run Piped Scans Saved So Far",
+    "M": "Back to the Top/Main menu",
+}
+PREDEFINED_SCAN_MENU_KEYS = ["1","2","3","4","5","6","7","8","9","10","11"]
+PREDEFINED_SCAN_MENU_TEXTS = [
+    "Volume Scanners | High Momentum | Breaking Out Now | ATR Cross     ",
+    "Volume Scanners | High Momentum | ATR Cross",
+    "Volume Scanners | High Momentum                                    ",
+    "Volume Scanners | ATR Cross",
+    "Volume Scanners | High Bid/Ask Build Up                            ",
+    "High Momentum | ATR Cross",
+    "High Momentum | ATR Trailing Stop                                  ",
+    "ATR Cross | ATR Trailing Stop",
+    "TTM Sqeeze Buy | Intraday RSI b/w 0 to 54                          ",
+    "Volume Scanners | High Momentum | Breaking Out Now | ATR Cross | Intraday RSI b/w 0 to 54",
+    "Volume Scanners | ATR Cross | Intraday RSI b/w 0 to 54             ",
+]
+level2_P_MenuDict = {}
+for key in PREDEFINED_SCAN_MENU_KEYS:
+    level2_P_MenuDict[key] = PREDEFINED_SCAN_MENU_TEXTS[int(key)-1]
+level2_P_MenuDict["M"] = "Back to the Top/Main menu"
+PREDEFINED_SCAN_MENU_VALUES =[
+    "--systemlaunched -a y -e -o 'X:12:9:2.5:>|X:0:31:>|X:0:23:>|X:0:27:'",
+    "--systemlaunched -a y -e -o 'X:12:9:2.5:>|X:0:31:>|X:0:27:'",
+    "--systemlaunched -a y -e -o 'X:12:9:2.5:>|X:0:31:'",
+    "--systemlaunched -a y -e -o 'X:12:9:2.5:>|X:0:27:'",
+    "--systemlaunched -a y -e -o 'X:12:9:2.5:>|X:0:29:'",
+    "--systemlaunched -a y -e -o 'X:12:31:>|X:0:27:'",
+    "--systemlaunched -a y -e -o 'X:12:31:>|X:0:30:1:'",
+    "--systemlaunched -a y -e -o 'X:12:27:>|X:0:30:1:'",
+    "--systemlaunched -a y -e -o 'X:12:7:6:1:>|X:0:5:0:54:i 1m'",
+    "--systemlaunched -a y -e -o 'X:12:9:2.5:>|X:0:31:>|X:0:23:>|X:0:27:>|X:0:5:0:54:i 1m'",
+    "--systemlaunched -a y -e -o 'X:12:9:2.5:>|X:0:27:>|X:0:5:0:54:i 1m'",
+]
+PIPED_SCANNERS = {}
+for key in PREDEFINED_SCAN_MENU_KEYS:
+    PIPED_SCANNERS[key] = PREDEFINED_SCAN_MENU_VALUES[int(key)-1]
+
 level1_T_MenuDict = {
     "L": "Long Term",
     "S": "Short Term (Intraday)",
@@ -98,7 +142,7 @@ level1_X_MenuDict = {
     "11": "Nifty Midcap 150 ",
     "12": "Nifty (All Stocks)",
     "13": "Newly Listed (IPOs in last 2 Year)           ",
-    "14": "F&O Stocks Only",
+    "14": "F&O Stocks Only", #Discontinued:  https://nsearchives.nseindia.com/content/circulars/FAOP61157.pdf
     "15": "NASDAQ",
     "M": "Back to the Top/Main menu",
     "Z": "Exit (Ctrl + C)",
@@ -135,6 +179,8 @@ level2_X_MenuDict = {
     "28": "Bullish Higher Opens           ",
     "29": "Intraday Bid/Ask Build-up      ",
     "30": "ATR Trailing Stops(Swing Paper Trading)",
+    "31": "High Momentum(RSI,MFI,CCI)     ",
+    # "32": "High Momentum(14)",
     # "28": "Extremely bullish daily close      ",
     # "29": "Rising RSI                      ",
     # "30": "RSI entering bullish territory",
@@ -146,7 +192,7 @@ level3_X_Reversal_MenuDict = {
     "1": "Buy Signals (Bullish Reversal)",
     "2": "Sell Signals (Bearish Reversal)",
     "3": "Momentum Gainers (Rising Bullish Momentum)",
-    "4": "Reversal at Moving Average (Bullish Reversal)",
+    "4": "Reversal at Moving Average (Bullish/Bearish Reversal)",
     "5": "Volume Spread Analysis (Bullish VSA Reversal)",
     "6": "Narrow Range (NRx) Reversal",
     "7": "Lorentzian Classifier (Machine Learning based indicator)",
@@ -207,7 +253,11 @@ level4_X_Lorenzian_MenuDict = {
     "3": "Any/All",
     "0": "Cancel",
 }
-
+Pin_MenuDict = {
+    "1": "Pin this scan category or piped scan {0}",
+    "2": "Pin these {0} stocks in the scan results (Just keep tracking only these {0} stocks)",
+    "M": "Back to the Top/Main menu",
+}
 
 class MenuRenderStyle(Enum):
     STANDALONE = 1
@@ -307,10 +357,11 @@ class menus:
     def allMenus(topLevel="X",index=12):
         menuOptions = [topLevel]
         indexOptions =[index]
-        scanOptions = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,23,24,25,27,28]
+        scanOptions = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,23,24,25,27,28,30,31]
         scanSubOptions = {
-                            6:[1,2,3,4,5,6,{7:[1,2]},8,9],
+                            6:[1,2,3,4,5,6,{7:[1,2]},8,9,10],
                             7:[1,2,{3:[1,2]},4,5,{6:[1,3]},7],
+                            30:[1,2],
                             # 21:[3,5,6,7,8,9]
                          }
         runOptions = []
@@ -344,17 +395,23 @@ class menus:
         renderExceptionKeys=[],
         skip=[],
         parent=None,
+        substitutes=[]
     ):
         tabLevel = 0
         self.menuDict = {}
         line = 0
         lineIndex = 1
+        substituteIndex = 0
         for key in rawDictionary:
             if skip is not None and key in skip:
                 continue
             m = menu()
+            menuText = rawDictionary[key]
+            if "{0}" in menuText and len(substitutes) > 0:
+                menuText = menuText.format(f"{colorText.WARN}{substitutes[substituteIndex]}{colorText.END}")
+                substituteIndex += 1
             m.create(
-                str(key).upper(), rawDictionary[key], level=self.level, parent=parent
+                str(key).upper(), menuText, level=self.level, parent=parent
             )
             if key in renderExceptionKeys:
                 m.isException = True
@@ -390,6 +447,9 @@ class menus:
                 menuText = menuText + m.render(coloredValues=([] if asList else coloredValues))
         return menuText
 
+    def renderPinnedMenu(self,substitutes=[]):
+        return self.renderPinSubmenus(substitutes=substitutes)
+    
     def renderForMenu(self, selectedMenu:menu=None, skip=[], asList=False, renderStyle=None):
         if selectedMenu is None and self.level == 0:
             # Top level Application Main menu
@@ -408,6 +468,13 @@ class menus:
                 self.level = 1
                 if selectedMenu.menuKey in ["T"]:
                     return self.renderLevel1_T_Menus(
+                        skip=skip,
+                        asList=asList,
+                        renderStyle=renderStyle,
+                        parent=selectedMenu,
+                    )
+                elif selectedMenu.menuKey in ["P"]:
+                    return self.renderLevel1_P_Menus(
                         skip=skip,
                         asList=asList,
                         renderStyle=renderStyle,
@@ -438,6 +505,13 @@ class menus:
                             renderStyle=renderStyle,
                             parent=selectedMenu,
                         )
+                elif selectedMenu.parent.menuKey in ["P"]:
+                    return self.renderLevel2_P_Menus(
+                        skip=skip,
+                        asList=asList,
+                        renderStyle=renderStyle,
+                        parent=selectedMenu,
+                    )
                 else:
                     # next levelsub-menu of the selected sub-menu
                     return self.renderLevel2_X_Menus(
@@ -519,16 +593,17 @@ class menus:
                 return None
         return None
 
-    def renderLevel0Menus(self, asList=False, renderStyle=None, parent=None, skip=None):
+    def renderPinSubmenus(self, asList=False, renderStyle=None, parent=None, skip=None, substitutes=[]):
         menuText = self.fromDictionary(
-            level0MenuDict,
-            renderExceptionKeys=["T", "E", "U", "Z", "L", "D"],
+            Pin_MenuDict,
+            renderExceptionKeys=["M"],
             renderStyle=renderStyle
             if renderStyle is not None
             else MenuRenderStyle.STANDALONE,
             skip=skip,
             parent=parent,
-        ).render(asList=asList)
+            substitutes = substitutes
+        ).render(asList=asList,coloredValues=["M"])
         if asList:
             return menuText
         else:
@@ -546,7 +621,40 @@ class menus:
 
     Enter your choice > (default is """
                     + colorText.WARN
-                    + self.find("X").keyTextLabel()
+                    + (self.find("M") or menu().create('?','?')).keyTextLabel().strip()
+                    + ") "
+                    "" + colorText.END
+                )
+            return menuText
+        
+    def renderLevel0Menus(self, asList=False, renderStyle=None, parent=None, skip=None):
+        menuText = self.fromDictionary(
+            level0MenuDict,
+            renderExceptionKeys=["P", "T", "E", "U", "Z", "L", "D"],
+            renderStyle=renderStyle
+            if renderStyle is not None
+            else MenuRenderStyle.STANDALONE,
+            skip=skip,
+            parent=parent,
+        ).render(asList=asList,coloredValues=["X"])
+        if asList:
+            return menuText
+        else:
+            if OutputControls().enableMultipleLineOutput:
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + colorText.WARN
+                    + "[+] Select a menu option:"
+                    + colorText.END
+                )
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + menuText
+                    + """
+
+    Enter your choice > (default is """
+                    + colorText.WARN
+                    + (self.find("X") or menu().create('?','?')).keyTextLabel().strip()
                     + ") "
                     "" + colorText.END
                 )
@@ -600,6 +708,7 @@ class menus:
     def renderLevel1_T_Menus(
         self, skip=[], asList=False, renderStyle=None, parent=None
     ):
+        defaultKey = 'L' if configManager.period == '280d' else 'S'
         menuText = self.fromDictionary(
             level1_T_MenuDict,
             renderExceptionKeys=["M"],
@@ -608,7 +717,7 @@ class menus:
             else MenuRenderStyle.STANDALONE,
             skip=skip,
             parent=parent,
-        ).render(asList=asList)
+        ).render(asList=asList,coloredValues=[defaultKey])
         if asList:
             return menuText
         else:
@@ -619,7 +728,6 @@ class menus:
                     + "[+] Select a configuration period for Screening:"
                     + colorText.END
                 )
-                defaultKey = 'L' if configManager.period == '280d' else 'S'
                 OutputControls().printOutput(
                     colorText.BOLD
                     + menuText
@@ -627,12 +735,82 @@ class menus:
 
     Enter your choice > (default is """
                     + colorText.WARN
-                    + self.find(defaultKey).keyTextLabel()
+                    + (self.find(defaultKey) or menu().create('?','?')).keyTextLabel().strip()
                     + ")  "
                     "" + colorText.END
                 )
             return menuText
-                
+        
+    def renderLevel1_P_Menus(
+        self, skip=[], asList=False, renderStyle=None, parent=None
+    ):
+        menuText = self.fromDictionary(
+            level1_P_MenuDict,
+            renderExceptionKeys=["M"],
+            renderStyle=renderStyle
+            if renderStyle is not None
+            else MenuRenderStyle.STANDALONE,
+            skip=skip,
+            parent=parent,
+        ).render(asList=asList, coloredValues=["1"])
+        if asList:
+            return menuText
+        else:
+            if OutputControls().enableMultipleLineOutput:
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + colorText.WARN
+                    + "[+] Select an option:"
+                    + colorText.END
+                )
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + menuText
+                    + """
+
+    Enter your choice > (default is """
+                    + colorText.WARN
+                    + (self.find('1') or menu().create('?','?')).keyTextLabel().strip()
+                    + ")  "
+                    "" + colorText.END
+                )
+            return menuText
+
+    def renderLevel2_P_Menus(
+        self, skip=[], asList=False, renderStyle=None, parent=None
+    ):
+        menuText = self.fromDictionary(
+            level2_P_MenuDict,
+            renderExceptionKeys=["M"],
+            renderStyle=renderStyle
+            if renderStyle is not None
+            else MenuRenderStyle.TWO_PER_ROW,
+            skip=skip,
+            parent=parent,
+        ).render(asList=asList,coloredValues=["1"])
+        if asList:
+            return menuText
+        else:
+            if OutputControls().enableMultipleLineOutput:
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + colorText.WARN
+                    + "[+] Select a scanner:"
+                    + colorText.END
+                )
+                OutputControls().printOutput(
+                    colorText.BOLD
+                    + menuText
+                    + """
+
+    Enter your choice > (default is """
+                    + colorText.WARN
+                    + (self.find('1') or menu().create('?','?')).keyTextLabel().strip()
+                    + ")  "
+                    "" + colorText.END
+                )
+            return menuText
+        
     def renderLevel1_X_Menus(
         self, skip=[], asList=False, renderStyle=None, parent=None
     ):
@@ -644,7 +822,7 @@ class menus:
             else MenuRenderStyle.THREE_PER_ROW,
             skip=skip,
             parent=parent,
-        ).render(asList=asList, coloredValues=["15"])
+        ).render(asList=asList, coloredValues=["15",str(configManager.defaultIndex)])
         if asList:
             return menuText
         else:
@@ -662,7 +840,7 @@ class menus:
 
     Enter your choice > (default is """
                     + colorText.WARN
-                    + self.find(str(configManager.defaultIndex)).keyTextLabel()
+                    + (self.find(str(configManager.defaultIndex)) or menu().create('?','?')).keyTextLabel().strip()
                     + ")  "
                     "" + colorText.END
                 )
@@ -679,7 +857,7 @@ class menus:
             else MenuRenderStyle.STANDALONE,
             skip=skip,
             parent=parent,
-        ).render(asList=asList)
+        ).render(asList=asList, coloredValues=["1"])
         if asList:
             return menuText
         else:
@@ -695,8 +873,11 @@ class menus:
                     + menuText
                     + """
 
-            """
-                    + colorText.END
+    Enter your choice > (default is """
+                    + colorText.WARN
+                    + (self.find("1") or menu().create('?','?')).keyTextLabel().strip()
+                    + ")  "
+                    "" + colorText.END
                 )
             return menuText
 
@@ -711,7 +892,7 @@ class menus:
             else MenuRenderStyle.STANDALONE,
             skip=skip,
             parent=parent,
-        ).render(asList=asList)
+        ).render(asList=asList, coloredValues=["1"])
         if asList:
             return menuText
         else:
@@ -727,8 +908,11 @@ class menus:
                     + menuText
                     + """
 
-            """
-                    + colorText.END
+    Enter your choice > (default is """
+                    + colorText.WARN
+                    + (self.find("1") or menu().create('?','?')).keyTextLabel().strip()
+                    + ")  "
+                    "" + colorText.END
                 )
             return menuText
         
@@ -743,7 +927,7 @@ class menus:
             else MenuRenderStyle.TWO_PER_ROW,
             skip=skip,
             parent=parent,
-        ).render(asList=asList)
+        ).render(asList=asList, coloredValues=["9"])
         if asList:
             return menuText
         else:
@@ -759,7 +943,9 @@ class menus:
                     + menuText
                     + """
 
-            """
+    Enter your choice > (default is """
+                    + colorText.WARN
+                    + (self.find("9") or menu().create('?','?')).keyTextLabel().strip() + ")"
                     + colorText.END
                 )
             return menuText
@@ -775,7 +961,7 @@ class menus:
             else MenuRenderStyle.STANDALONE,
             skip=skip,
             parent=parent,
-        ).render(asList=asList)
+        ).render(asList=asList,coloredValues=["3"])
         if asList:
             return menuText
         else:
@@ -791,7 +977,9 @@ class menus:
                     + menuText
                     + """
 
-            """
+    Enter your choice > (default is """
+                    + colorText.WARN
+                    + (self.find("3") or menu().create('?','?')).keyTextLabel().strip() + ")"
                     + colorText.END
                 )
             return menuText
@@ -807,7 +995,7 @@ class menus:
             else MenuRenderStyle.STANDALONE,
             skip=skip,
             parent=parent,
-        ).render(asList=asList)
+        ).render(asList=asList,coloredValues=["3"])
         if asList:
             return menuText
         else:
@@ -823,7 +1011,9 @@ class menus:
                     + menuText
                     + """
 
-            """
+    Enter your choice > (default is """
+                    + colorText.WARN
+                    + (self.find("3") or menu().create('?','?')).keyTextLabel().strip() + ")"
                     + colorText.END
                 )
             return menuText
@@ -839,7 +1029,7 @@ class menus:
             else MenuRenderStyle.STANDALONE,
             skip=skip,
             parent=parent,
-        ).render(asList=asList)
+        ).render(asList=asList, coloredValues=["1"])
         if asList:
             return menuText
         else:
@@ -855,7 +1045,9 @@ class menus:
                     + menuText
                     + """
 
-            """
+    Enter your choice > (default is """
+                    + colorText.WARN
+                    + ((self.find("1")) or menu().create('?','?')).keyTextLabel().strip() + ")"
                     + colorText.END
                 )
             return menuText
@@ -871,7 +1063,7 @@ class menus:
             else MenuRenderStyle.STANDALONE,
             skip=skip,
             parent=parent,
-        ).render(asList=asList)
+        ).render(asList=asList,coloredValues=["1"])
         if asList:
             return menuText
         else:
@@ -887,7 +1079,9 @@ class menus:
                     + menuText
                     + """
 
-            """
+    Enter your choice > (default is """
+                    + colorText.WARN
+                    + (self.find("1") or menu().create('?','?')).keyTextLabel().strip() + ")"
                     + colorText.END
                 )
             return menuText
@@ -903,7 +1097,7 @@ class menus:
             else MenuRenderStyle.STANDALONE,
             skip=skip,
             parent=parent,
-        ).render(asList=asList)
+        ).render(asList=asList, coloredValues=["1"])
         if asList:
             return menuText
         else:
@@ -919,7 +1113,9 @@ class menus:
                     + menuText
                     + """
 
-            """
+    Enter your choice > (default is """
+                    + colorText.WARN
+                    + (self.find("1") or menu().create('?','?')).keyTextLabel().strip() + ")"
                     + colorText.END
                 )
             return menuText
@@ -936,7 +1132,7 @@ class menus:
             else MenuRenderStyle.STANDALONE,
             skip=skip,
             parent=parent,
-        ).render(asList=asList)
+        ).render(asList=asList, coloredValues=["1"])
         if asList:
             return menuText
         else:
@@ -952,7 +1148,9 @@ class menus:
                     + menuText
                     + """
 
-            """
+    Enter your choice > (default is """
+                    + colorText.WARN
+                    + (self.find("1") or menu().create('?','?')).keyTextLabel().strip() + ")"
                     + colorText.END
                 )
             return menuText
@@ -969,7 +1167,7 @@ class menus:
             else MenuRenderStyle.STANDALONE,
             skip=skip,
             parent=parent,
-        ).render(asList=asList)
+        ).render(asList=asList,coloredValues=["1"])
         if asList:
             return menuText
         else:
@@ -985,7 +1183,9 @@ class menus:
                     + menuText
                     + """
 
-            """
+    Enter your choice > (default is """
+                    + colorText.WARN
+                    + (self.find("1") or menu().create('?','?')).keyTextLabel().strip() + ")"
                     + colorText.END
                 )
             return menuText

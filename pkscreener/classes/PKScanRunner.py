@@ -97,16 +97,16 @@ class PKScanRunner:
         )
         return screenResults, saveResults
 
-    def initQueues(minimumCount=0):
+    def initQueues(minimumCount=0,userPassedArgs=None):
         tasks_queue = multiprocessing.JoinableQueue()
         results_queue = multiprocessing.Queue()
         logging_queue = multiprocessing.Queue()
 
-        totalConsumers = min(minimumCount, multiprocessing.cpu_count())
+        totalConsumers = 1 if (userPassedArgs is not None and userPassedArgs.singlethread) else min(minimumCount, multiprocessing.cpu_count())
         if totalConsumers == 1:
             totalConsumers = 2  # This is required for single core machine
-        if PKScanRunner.configManager.cacheEnabled is True and multiprocessing.cpu_count() > 2:
-            totalConsumers -= 1
+        # if PKScanRunner.configManager.cacheEnabled is True and multiprocessing.cpu_count() > 2:
+        #     totalConsumers -= 1
         return tasks_queue, results_queue, totalConsumers, logging_queue
 
     def populateQueues(items, tasks_queue, exit=False,userPassedArgs=None):
@@ -253,7 +253,7 @@ class PKScanRunner:
             
     def runScanWithParams(userPassedArgs,keyboardInterruptEvent,screenCounter,screenResultsCounter,stockDictPrimary,stockDictSecondary,testing, backtestPeriod, menuOption, executeOption, samplingDuration, items,screenResults, saveResults, backtest_df,scanningCb,tasks_queue, results_queue, consumers,logging_queue):
         if tasks_queue is None or results_queue is None or consumers is None:
-            tasks_queue, results_queue, consumers,logging_queue = PKScanRunner.prepareToRunScan(menuOption,keyboardInterruptEvent,screenCounter, screenResultsCounter, stockDictPrimary,stockDictSecondary, items,executeOption)
+            tasks_queue, results_queue, consumers,logging_queue = PKScanRunner.prepareToRunScan(menuOption,keyboardInterruptEvent,screenCounter, screenResultsCounter, stockDictPrimary,stockDictSecondary, items,executeOption,userPassedArgs)
             try:
                 if logging_queue is not None:
                     log_queue_reader = LogQueueReader(logging_queue)
@@ -291,11 +291,15 @@ class PKScanRunner:
             # going to pipe the results from an earlier run
             # or we're running in monitoring mode
             PKScanRunner.terminateAllWorkers(userPassedArgs,consumers, tasks_queue, testing)
+        else:
+            for worker in consumers:
+                worker.paused = True
+                worker._clear()
         return screenResults, saveResults,backtest_df,tasks_queue, results_queue, consumers, logging_queue
 
     @exit_after(180) # Should not remain stuck starting the multiprocessing clients beyond this time
-    def prepareToRunScan(menuOption,keyboardInterruptEvent, screenCounter, screenResultsCounter, stockDictPrimary,stockDictSecondary, items, executeOption):
-        tasks_queue, results_queue, totalConsumers, logging_queue = PKScanRunner.initQueues(len(items))
+    def prepareToRunScan(menuOption,keyboardInterruptEvent, screenCounter, screenResultsCounter, stockDictPrimary,stockDictSecondary, items, executeOption,userPassedArgs):
+        tasks_queue, results_queue, totalConsumers, logging_queue = PKScanRunner.initQueues(len(items),userPassedArgs)
         scr = ScreeningStatistics.ScreeningStatistics(PKScanRunner.configManager, default_logger())
         exists, cache_file = Utility.tools.afterMarketStockDataExists(intraday=PKScanRunner.configManager.isIntradayConfig())
         sec_cache_file = cache_file if "intraday_" in cache_file else f"intraday_{cache_file}"
@@ -307,10 +311,10 @@ class PKScanRunner:
                         logging_queue,
                         screenCounter,
                         screenResultsCounter,
-                        stockDictPrimary,
-                        stockDictSecondary,
-                        # (stockDictPrimary if menuOption not in ["C"] else None),
-                        # (stockDictSecondary if menuOption not in ["C"] else None),
+                        # stockDictPrimary,
+                        # stockDictSecondary,
+                        (stockDictPrimary if menuOption not in ["C"] else None),
+                        (stockDictSecondary if menuOption not in ["C"] else None),
                         PKScanRunner.fetcher.proxyServer,
                         keyboardInterruptEvent,
                         default_logger(),
@@ -318,21 +322,25 @@ class PKScanRunner:
                         PKScanRunner.configManager,
                         PKScanRunner.candlePatterns,
                         scr,
-                        None,
-                        None
-                        # (cache_file if (exists and menuOption in ["C"]) else None),
-                        # (sec_cache_file if (exists and menuOption in ["C"]) else None),
+                        # None,
+                        # None
+                        (cache_file if (exists and menuOption in ["C"]) else None),
+                        (sec_cache_file if (exists and menuOption in ["C"]) else None),
                     )
                     for _ in range(totalConsumers)
                 ]
         # if executeOption == 29: # Intraday Bid/Ask, for which we need to fetch data from NSE instead of yahoo
-        intradayFetcher = Intra_Day("SBINEQN") # This will initialise the cookies etc.
+        try:
+            intradayFetcher = None
+            intradayFetcher = Intra_Day("SBINEQN") # This will initialise the cookies etc.
+        except:
+            pass
         for consumer in consumers:
             consumer.intradayNSEFetcher = intradayFetcher
         PKScanRunner.startWorkers(consumers)
         return tasks_queue,results_queue,consumers,logging_queue
 
-    @exit_after(180) # Should not remain stuck starting the multiprocessing clients beyond this time
+    @exit_after(120) # Should not remain stuck starting the multiprocessing clients beyond this time
     def startWorkers(consumers):
         try:
             from pytest_cov.embed import cleanup_on_signal, cleanup_on_sigterm
@@ -440,6 +448,11 @@ class PKScanRunner:
             # If it's being run under unit testing, let's wrap up if we find at least 1
             # stock or if we've already tried screening through 5% of the list.
             if (not shouldContinue) or (testing and counter >= int(numStocksPerIteration * 0.05)):
+                if PKScanRunner.consumers is not None:
+                    consumers = PKScanRunner.consumers
+                    for worker in consumers:
+                        worker.paused = True
+                        worker._clear()
                 break
             # Add to the queue when we're through 75% of the previously added items already
             if counter >= numStocksPerIteration: #int(numStocksPerIteration * 0.75):

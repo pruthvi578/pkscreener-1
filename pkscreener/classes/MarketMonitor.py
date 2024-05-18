@@ -26,11 +26,13 @@ import os
 import sys
 import pandas as pd
 import numpy as np
+from time import sleep
 from PKDevTools.classes.Singleton import SingletonType, SingletonMixin
 from PKDevTools.classes.OutputControls import OutputControls
 from PKDevTools.classes.ColorText import colorText
 from PKDevTools.classes import Archiver
 from PKDevTools.classes.SuppressOutput import SuppressOutput
+from PKDevTools.classes.log import default_logger
 
 class MarketMonitor(SingletonMixin, metaclass=SingletonType):
     def __init__(self,monitors=[], maxNumResultsPerRow=3,maxNumColsInEachResult=6,maxNumRowsInEachResult=10,maxNumResultRowsInMonitor=2):
@@ -65,6 +67,7 @@ class MarketMonitor(SingletonMixin, metaclass=SingletonType):
                 columns.append(f"A{colNameIndex +1}")
                 colNameIndex += 1
             self.monitor_df = pd.DataFrame(columns=columns)
+            self.isPinnedSingleMonitorMode = len(self.monitorPositions.keys()) == 1
 
     def currentMonitorOption(self):
         try:
@@ -84,31 +87,111 @@ class MarketMonitor(SingletonMixin, metaclass=SingletonType):
         else:
             prevOutput_results = results_df[~results_df.index.duplicated(keep='first')]
             prevOutput_results = prevOutput_results.index
+            # # Maybe the index is an int ?
+            # prevOutput_results = [str(stock) for stock in prevOutput_results]
             prevOutput_results = ",".join(prevOutput_results)
         self.monitorResultStocks[str(self.monitorIndex)] = prevOutput_results
 
     def refresh(self, screen_df:pd.DataFrame=None, screenOptions=None, chosenMenu=None, dbTimestamp="", telegram=False):
         highlightRows = []
         highlightCols = []
-        if screen_df is None or screen_df.empty:
+        if screen_df is None or screen_df.empty or screenOptions is None:
             return
-
         screen_monitor_df = screen_df.copy()
-        screen_monitor_df.reset_index(inplace=True)
-        screen_monitor_df = screen_monitor_df[["Stock", "LTP", "%Chng","52Wk H","RSI/i" if "RSI/i" in screen_monitor_df.columns else "RSI","Volume"]].head(self.maxNumRowsInEachResult-1)
-        # Import Utility here since Utility has dependency on PKScheduler which in turn has dependency on 
-        # multiprocessing, which behaves erratically if imported at the top.
+        monitorPosition = self.monitorPositions.get(screenOptions)
+
         from pkscreener.classes import Utility
-        screen_monitor_df.loc[:, "%Chng"] = screen_monitor_df.loc[:, "%Chng"].apply(
-                    lambda x: Utility.tools.roundOff(str(x).split("% (")[0] + colorText.END,0)
-                )
-        screen_monitor_df.loc[:, "52Wk H"] = screen_monitor_df.loc[:, "52Wk H"].apply(
-            lambda x: Utility.tools.roundOff(x,0)
+
+        if self.isPinnedSingleMonitorMode:
+            screen_monitor_df = screen_monitor_df[screen_monitor_df.columns[:14]]
+            self.monitor_df = screen_monitor_df
+        else:
+            screen_monitor_df.reset_index(inplace=True)
+            screen_monitor_df = screen_monitor_df[["Stock", "LTP", "%Chng","52Wk H","RSI/i" if "RSI/i" in screen_monitor_df.columns else "RSI","Volume"]].head(self.maxNumRowsInEachResult-1)
+            # Import Utility here since Utility has dependency on PKScheduler which in turn has dependency on 
+            # multiprocessing, which behaves erratically if imported at the top.
+            screen_monitor_df.loc[:, "%Chng"] = screen_monitor_df.loc[:, "%Chng"].apply(
+                        lambda x: Utility.tools.roundOff(str(x).split("% (")[0] + colorText.END,0)
+                    )
+            screen_monitor_df.loc[:, "52Wk H"] = screen_monitor_df.loc[:, "52Wk H"].apply(
+                lambda x: Utility.tools.roundOff(x,0)
+            )
+            screen_monitor_df.loc[:, "Volume"] = screen_monitor_df.loc[:, "Volume"].apply(
+                lambda x: Utility.tools.roundOff(x,0)
+            )
+            screen_monitor_df.rename(columns={"%Chng": "Ch%","Volume":"Vol","52Wk H":"52WkH", "RSI":"RSI/i"}, inplace=True)
+            telegram_df = self.updateDataFrameForTelegramMode(telegram, screen_monitor_df)
+        
+        
+        if monitorPosition is not None:
+            startRowIndex, startColIndex = monitorPosition
+            if not self.monitor_df.empty:
+                for _ in range(self.lines):
+                    sys.stdout.write("\x1b[1A")  # cursor up one line
+                    sys.stdout.write("\x1b[2K")  # delete the last line
+            if not self.isPinnedSingleMonitorMode:
+                firstColIndex = startColIndex
+                rowIndex = 0
+                colIndex = 0
+                highlightRows = [startRowIndex]
+                highlightCols = []
+                while rowIndex <= len(screen_monitor_df):
+                    for col in screen_monitor_df.columns:
+                        if rowIndex == 0:
+                            # Column names to be repeated for each refresh in respective headers
+                            cleanedScreenOptions = screenOptions.replace(":D","")
+                            if cleanedScreenOptions.startswith("|"):
+                                cleanedScreenOptions = cleanedScreenOptions.replace("|","")
+                                pipedFrom = ""
+                                if cleanedScreenOptions.startswith("{"):
+                                    pipedFrom = cleanedScreenOptions.split("}")[0] + "}:"
+                                cleanedScreenOptions = pipedFrom + ":".join(cleanedScreenOptions.split(":")[2:])
+                                cleanedScreenOptions = cleanedScreenOptions.replace(">X:0:","")
+                            widgetHeader = ":".join(cleanedScreenOptions.split(":")[:4])
+                            if "i " in screenOptions:
+                                widgetHeader = f'{":".join(widgetHeader.split(":")[:3])}:i:{cleanedScreenOptions.split("i ")[-1]}'
+                            self.monitor_df.loc[startRowIndex,[f"A{startColIndex+1}"]] = colorText.BOLD+colorText.HEAD+(widgetHeader if startColIndex==firstColIndex else col)+colorText.END
+                            highlightCols.append(startColIndex)
+                        else:
+                            self.monitor_df.loc[startRowIndex, [f"A{startColIndex+1}"]] = screen_monitor_df.iloc[rowIndex-1,colIndex]
+                            colIndex += 1
+                        startColIndex += 1
+                    _, startColIndex= monitorPosition
+                    rowIndex += 1
+                    colIndex = 0
+                    highlightRows.append(startRowIndex+1)
+                    startRowIndex += 1
+
+        self.monitor_df = self.monitor_df.replace(np.nan, "-", regex=True)
+        # self.monitorNames[screenOptions] = f"(Dashboard) > {chosenMenu}"
+        latestScanMenuOption = f"[+] {dbTimestamp} (Dashboard) > " + f"{chosenMenu} [{screenOptions}]"
+        OutputControls().printOutput(
+            colorText.BOLD
+            + colorText.FAIL
+            + latestScanMenuOption[:200]
+            + colorText.END
+            , enableMultipleLineOutput=True
         )
-        screen_monitor_df.loc[:, "Volume"] = screen_monitor_df.loc[:, "Volume"].apply(
-            lambda x: Utility.tools.roundOff(x,0)
+        tabulated_results = colorText.miniTabulator().tabulate(
+            self.monitor_df, tablefmt=colorText.No_Pad_GridFormat,
+            headers="keys" if self.isPinnedSingleMonitorMode else (),
+            highlightCharacter=colorText.HEAD+"="+colorText.END,
+            showindex=self.isPinnedSingleMonitorMode,
+            highlightedRows=highlightRows,
+            highlightedColumns=highlightCols,
+            maxcolwidths=Utility.tools.getMaxColumnWidths(self.monitor_df)
         )
-        screen_monitor_df.rename(columns={"%Chng": "Ch%","Volume":"Vol","52Wk H":"52WkH", "RSI":"RSI/i"}, inplace=True)
+        self.lines = len(tabulated_results.splitlines()) + 1 # 1 for the progress bar at the bottom and 1 for the chosenMenu option
+        OutputControls().printOutput(tabulated_results, enableMultipleLineOutput=True)
+        
+        if not self.isPinnedSingleMonitorMode:
+            if telegram:
+                self.updateIfRunningInTelegramBotMode(screenOptions, chosenMenu, dbTimestamp, telegram, telegram_df)
+        else:
+            sleep(30)
+
+    def updateDataFrameForTelegramMode(self, telegram, screen_monitor_df):
+        telegram_df = None
         if telegram:
             telegram_df = screen_monitor_df[["Stock", "LTP", "Ch%", "Vol"]]
             try:
@@ -134,60 +217,10 @@ class MarketMonitor(SingletonMixin, metaclass=SingletonType):
                         telegram_df[col] = telegram_df[col].astype(str)
             except:
                 pass
-        monitorPosition = self.monitorPositions.get(screenOptions)
-        if monitorPosition is not None:
-            startRowIndex, startColIndex = monitorPosition
-            if not self.monitor_df.empty:
-                for _ in range(self.lines):
-                    sys.stdout.write("\x1b[1A")  # cursor up one line
-                    sys.stdout.write("\x1b[2K")  # delete the last line
+        return telegram_df
 
-            firstColIndex = startColIndex
-            rowIndex = 0
-            colIndex = 0
-            highlightRows = [startRowIndex]
-            highlightCols = []
-            while rowIndex <= len(screen_monitor_df):
-                for col in screen_monitor_df.columns:
-                    if rowIndex == 0:
-                        # Column names to be repeated for each refresh in respective headers
-                        cleanedScreenOptions = screenOptions.replace(":D","")
-                        widgetHeader = ":".join(cleanedScreenOptions.split(":")[:4])
-                        if "i " in screenOptions:
-                            widgetHeader = f'{":".join(widgetHeader.split(":")[:3])}:i:{cleanedScreenOptions.split("i ")[-1]}'
-                        self.monitor_df.loc[startRowIndex,[f"A{startColIndex+1}"]] = colorText.BOLD+colorText.HEAD+(widgetHeader if startColIndex==firstColIndex else col)+colorText.END
-                        highlightCols.append(startColIndex)
-                    else:
-                        self.monitor_df.loc[startRowIndex, [f"A{startColIndex+1}"]] = screen_monitor_df.iloc[rowIndex-1,colIndex]
-                        colIndex += 1
-                    startColIndex += 1
-                _, startColIndex= monitorPosition
-                rowIndex += 1
-                colIndex = 0
-                highlightRows.append(startRowIndex+1)
-                startRowIndex += 1
-
-        self.monitor_df = self.monitor_df.replace(np.nan, "-", regex=True)
-        # self.monitorNames[screenOptions] = f"(Dashboard) > {chosenMenu}"
-        latestScanMenuOption = f"[+] {dbTimestamp} (Dashboard) > " + f"{chosenMenu} [{screenOptions}]"
-        OutputControls().printOutput(
-            colorText.BOLD
-            + colorText.FAIL
-            + latestScanMenuOption
-            + colorText.END
-            , enableMultipleLineOutput=True
-        )
-        tabulated_results = colorText.miniTabulator().tabulate(
-            self.monitor_df, tablefmt=colorText.No_Pad_GridFormat,
-            highlightCharacter=colorText.HEAD+"="+colorText.END,
-            showindex=False,
-            highlightedRows=highlightRows,
-            highlightedColumns=highlightCols,
-            maxcolwidths=Utility.tools.getMaxColumnWidths(self.monitor_df)
-        )
-        self.lines = len(tabulated_results.splitlines()) + 1 # 1 for the progress bar at the bottom and 1 for the chosenMenu option
-        OutputControls().printOutput(tabulated_results, enableMultipleLineOutput=True)
-        if telegram:
+    def updateIfRunningInTelegramBotMode(self, screenOptions, chosenMenu, dbTimestamp, telegram, telegram_df):
+        if telegram and telegram_df is not None:
             STD_ENCODING=sys.stdout.encoding if sys.stdout is not None else 'utf-8'
             
             telegram_df_tabulated = colorText.miniTabulator().tabulate(
@@ -198,7 +231,9 @@ class MarketMonitor(SingletonMixin, metaclass=SingletonType):
                             maxcolwidths=[None,None,4,3]
                         ).encode("utf-8").decode(STD_ENCODING).replace("-K-----S-----C-----R","-K-----S----C---R").replace("%  ","% ").replace("=K=====S=====C=====R","=K=====S====C===R").replace("Vol  |","Vol|").replace("x  ","x")
             telegram_df_tabulated = telegram_df_tabulated.replace("-E-----N-----E-----R","-E-----N----E---R").replace("=E=====N=====E=====R","=E=====N====E===R")
-            result_output = f"Latest data as of:{dbTimestamp}\n<b>{chosenMenu.split('>')[-1]}</b> [{screenOptions}]\n<pre>{telegram_df_tabulated}</pre>"
+            choiceSegments = chosenMenu.split(">")
+            chosenMenu = f"{choiceSegments[-2]} > {choiceSegments[-1]}" if len(choiceSegments)>=4 else f"{choiceSegments[-1]}"
+            result_output = f"Latest data as of:{dbTimestamp}\n<b>{chosenMenu}</b> [{screenOptions}]\n<pre>{telegram_df_tabulated}</pre>"
             try:
                 filePath = os.path.join(Archiver.get_user_outputs_dir(), f"monitor_outputs_{self.monitorIndex}.txt")
                 f = open(filePath, "w")
