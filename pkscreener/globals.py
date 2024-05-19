@@ -139,6 +139,10 @@ consumers = None
 logging_queue = None
 mp_manager = None
 
+def startMarketMonitor(mp_dict,keyboardevent):
+    from PKDevTools.classes.NSEMarketStatus import NSEMarketStatus
+    NSEMarketStatus(mp_dict,keyboardevent).startMarketMonitor()
+
 def finishScreening(
     downloadOnly,
     testing,
@@ -746,8 +750,13 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
     screenResultsCounter = multiprocessing.Value("i", 0)
     if mp_manager is None:
         mp_manager = multiprocessing.Manager()
+        
     if keyboardInterruptEvent is None and not keyboardInterruptEventFired:
         keyboardInterruptEvent = mp_manager.Event()
+        mkt_monitor_dict = mp_manager.dict()
+        # Let's start monitoring the market monitor
+        startMarketMonitor(mkt_monitor_dict,keyboardInterruptEvent)
+        
     keyboardInterruptEventFired = False
     if stockDictPrimary is None:
         stockDictPrimary = mp_manager.dict()
@@ -1544,7 +1553,7 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
                 OutputControls().printOutput(f"{colorText.GREEN} => Done in {round(time.time()-begin,2)}s{colorText.END}")
     except:
         pass
-    if userPassedArgs is None or (userPassedArgs is not None and (userPassedArgs.answerdefault is None or userPassedArgs.systemlaunched)):
+    if "RUNNER" not in os.environ.keys() and (userPassedArgs is None or (userPassedArgs is not None and (userPassedArgs.answerdefault is None or userPassedArgs.systemlaunched))):
         prevOutput_results = saveResults.index if (saveResults is not None and not saveResults.empty) else []
         hasFoundStocks = len(prevOutput_results) > 0 and (("|" not in userPassedArgs.options) if (userPassedArgs is not None and userPassedArgs.options is not None) else True)
         if hasFoundStocks:
