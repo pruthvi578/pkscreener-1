@@ -823,9 +823,10 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
                     return addOrRunPipedMenus()
                 launcher = sys.argv[0]
                 launcher = f"python3.11 {launcher}" if launcher.endswith(".py") else launcher
-                OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener with piped scanners. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} {scannerOption}{colorText.END}")
+                scannerOptionQuoted = scannerOption.replace("'",'"')
+                OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener with piped scanners. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} {scannerOptionQuoted}{colorText.END}")
                 sleep(2)
-                os.system(f"{launcher} {scannerOption}")
+                os.system(f"{launcher} {scannerOptionQuoted}")
                 OutputControls().printOutput(
                         colorText.GREEN
                         + f"[+] Finished running all piped scanners!"
@@ -1089,7 +1090,8 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
             return None, None
         else:
             selectedChoice["3"] = str(respChartPattern)
-            selectedChoice["4"] = str(maLength)
+            selectedChoice["4"] = str(insideBarToLookback) if (respChartPattern in [1, 2, 3] and (userPassedArgs is not None and userPassedArgs.pipedmenus is not None)) else str(maLength)
+            selectedChoice["5"] = str(maLength) if (respChartPattern in [1, 2, 3] and (userPassedArgs is not None and userPassedArgs.pipedmenus is not None)) else ""
     if executeOption == 8:
         if len(options) >= 5:
             if "".join(str(options[3]).split(".")).isdecimal():
@@ -1573,9 +1575,11 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
                     monitorOption = f"{monitorOption}:{prevOutput_results}"
                 launcher = sys.argv[0]
                 launcher = f"python3.11 {launcher}" if launcher.endswith(".py") else launcher
-                OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener with pinned scan option. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -m '{monitorOption}'{colorText.END}")
+                monitorOption = f'"{monitorOption}"'
+                scannerOptionQuoted = monitorOption.replace("'",'"')
+                OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener with pinned scan option. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -m {scannerOptionQuoted}{colorText.END}")
                 sleep(2)
-                os.system(f"{launcher} -a Y -m '{monitorOption}'")
+                os.system(f"{launcher} -a Y -m {scannerOptionQuoted}")
 
     if userPassedArgs is not None:
         if userPassedArgs.runintradayanalysis:
@@ -1688,7 +1692,7 @@ def addOrRunPipedMenus():
     global userPassedArgs
     # User must have selected menu "P" earlier
     savedPipes = f"{userPassedArgs.pipedmenus}:>|" if len(userPassedArgs.pipedmenus) > 0 else ""
-    userPassedArgs.pipedmenus = f"{savedPipes}{userPassedArgs.options}"
+    userPassedArgs.pipedmenus = f"{savedPipes}{userPassedArgs.options}:D:D:D:"
     userPassedArgs.pipedmenus = userPassedArgs.pipedmenus.replace("::",":D:")
     userPassedArgs.pipedmenus = f"{userPassedArgs.pipedmenus}{('i '+configManager.duration) if configManager.isIntradayConfig() else ''}"
     updateMenuChoiceHierarchy()
@@ -1701,9 +1705,11 @@ def addOrRunPipedMenus():
     if shouldAddMoreIntoPipe.lower() != 'y':
         launcher = sys.argv[0]
         launcher = f"python3.11 {launcher}" if launcher.endswith(".py") else launcher
-        OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener with piped scanners. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -e -o '{userPassedArgs.pipedmenus}'{colorText.END}")
+        monitorOption = f'"{userPassedArgs.pipedmenus}"'
+        scannerOptionQuoted = monitorOption.replace("'",'"').replace(":>",":D:D:D:>").replace("::",":")
+        OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener with piped scanners. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -e -o {scannerOptionQuoted}{colorText.END}")
         sleep(2)
-        os.system(f"{launcher} --systemlaunched -a Y -e -o '{userPassedArgs.pipedmenus}'")
+        os.system(f"{launcher} --systemlaunched -a Y -e -o {scannerOptionQuoted}")
         userPassedArgs.pipedmenus = None
         OutputControls().printOutput(
                 colorText.GREEN
@@ -2636,7 +2642,21 @@ def saveDownloadedData(downloadOnly, testing, stockDictPrimary, configManager, l
         )
         Utility.tools.saveStockData(stockDictPrimary, configManager, loadCount, intraday)
         if downloadOnly:
-            Utility.tools.saveStockData(stockDictPrimary, configManager, loadCount, intraday, downloadOnly=downloadOnly)
+            cache_file = Utility.tools.saveStockData(stockDictPrimary, configManager, loadCount, intraday, downloadOnly=downloadOnly)
+            cacheFileSize = os.stat(cache_file).st_size if os.path.exists(cache_file) else 0
+            if cacheFileSize < 1024*1024*50:
+                try:
+                    from PKDevTools.classes import Archiver
+                    log_file_path = os.path.join(Archiver.get_user_outputs_dir(), "pkscreener-logs.txt")
+                    message=f"{cache_file} has size: {cacheFileSize}! Something is wrong!"
+                    if os.path.exists(log_file_path):
+                        sendMessageToTelegramChannel(caption=message,document_filePath=log_file_path, user="-1001785195297")
+                    else:
+                        sendMessageToTelegramChannel(message=message,user="-1001785195297")
+                except:
+                    pass
+                # Let's try again with logging
+                os.system(f"{sys.argv[0]} -a Y -e -l -d {'-i 1m' if configManager.isIntradayConfig() else ''}")
     else:
         OutputControls().printOutput(colorText.BOLD + colorText.GREEN + "[+] Skipped Saving!" + colorText.END)
 
