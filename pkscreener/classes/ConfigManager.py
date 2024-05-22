@@ -36,7 +36,7 @@ from PKDevTools.classes.OutputControls import OutputControls
 parser = configparser.ConfigParser(strict=False)
 
 # Default attributes for Downloading Cache from Git repo
-default_period = "280d"
+default_period = "1y"
 default_duration = "1d"
 default_timeout = 2
 
@@ -49,14 +49,13 @@ class tools(SingletonMixin, metaclass=SingletonType):
         self.volumeRatio = 2.5
         self.minLTP = 20.0
         self.maxLTP = 50000
-        self.period = "280d"
+        self.period = "1y"
         self.duration = "1d"
         self.shuffleEnabled = True
         self.cacheEnabled = True
         self.stageTwo = True
         self.useEMA = False
         self.showunknowntrends = True
-        self.botavailability = True
         self.enablePortfolioCalculations = False
         self.logsEnabled = False
         self.generalTimeout = 2
@@ -180,8 +179,6 @@ class tools(SingletonMixin, metaclass=SingletonType):
             parser.set("filters", "minPrice", str(self.minLTP))
             parser.set("filters", "volumeRatio", str(self.volumeRatio))
 
-            parser.set("bot", "botavailability",  "y" if self.botavailability else "n")
-
             try:
                 fp = open("pkscreener.ini", "w")
                 parser.write(fp)
@@ -218,7 +215,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
             )
             try:
                 self.period = input(
-                    f"[+] Valid periods: 1d,5d,1mo,3mo,6mo,1y,2y,5y,10y,ytd,max\n[+] Enter number of days for which stock data to be downloaded (Days).(Optimal = 280, Current: {colorText.FAIL}{self.period}{colorText.END}): "
+                    f"[+] Valid periods: 1d,5d,1mo,3mo,6mo,1y,2y,5y,10y,ytd,max\n[+] Enter number of days for which stock data to be downloaded (Days).(Optimal = 1y, Current: {colorText.FAIL}{self.period}{colorText.END}): "
                 ) or self.period
                 self.daysToLookback = input(
                     f"[+] Number of recent trading periods (TimeFrame) to screen for Breakout/Consolidation (Days)(Optimal = 22, Current: {colorText.FAIL}{self.daysToLookback}{colorText.END}): "
@@ -376,7 +373,6 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 parser.set("filters", "minPrice", str(self.minLTP))
                 parser.set("filters", "volumeRatio", str(self.volumeRatio))
 
-                parser.set("bot", "botavailability", str(self.botavailability))
             except Exception as e:
                 default_logger().debug(e,exc_info=True)
                 from time import sleep
@@ -518,7 +514,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
             candleDuration = self.duration.lower()
         self.getConfig(parser)
         if candleDuration[-1] in ["d"]:
-            self.period = "280d"
+            self.period = "1y"
             self.cacheEnabled = True
         if candleDuration[-1] in ["m", "h"] and not self.isIntradayConfig():
             self.period = "1d"
