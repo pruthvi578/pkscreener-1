@@ -993,10 +993,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     cmdText = ""
     for cmd in cmds:
         cmdText = f"{cmdText}\n\n{cmd.commandTextKey()} for {cmd.commandTextLabel()}"
+    reply_markup = default_markup([])
+    
     """Send a message when the command /help is issued."""
     if update is not None and update.message is not None:
         await update.message.reply_text(
-            f"You can begin by typing in /start and hit send!\n\nOR\n\nChoose an option:\n{cmdText}"
+            f"You can begin by typing in /start and hit send!\n\nOR\n\nChoose an option:\n{cmdText}",
+            reply_markup=reply_markup
         )  #  \n\nThis bot restarts every hour starting at 5:30am IST until 10:30pm IST to keep it running on free servers. If it does not respond, please try again in a minutes to avoid the restart duration!
         query = update.message
         message = f"Name: <b>{query.from_user.first_name}</b>, Username:@{query.from_user.username} with ID: <b>@{str(query.from_user.id)}</b> began using the bot!"
