@@ -1,12 +1,16 @@
 [![MADE-IN-INDIA](https://img.shields.io/badge/MADE%20WITH%20%E2%9D%A4%20IN-INDIA-orange?style=for-the-badge)](https://en.wikipedia.org/wiki/India) [![GitHub release (latest by date)](https://img.shields.io/github/v/release/pkjmesra/PKScreener?style=for-the-badge)](#) [![GitHub all releases](https://img.shields.io/github/downloads/pkjmesra/PKScreener/total?color=Green&label=Downloads&style=for-the-badge)](#) [![MADE_WITH](https://img.shields.io/badge/BUILT%20USING-PYTHON-yellow?style=for-the-badge&logo=python&logoColor=yellow)](https://www.python.org/)
 
 ## What's New?
-1. [v0.45.20240529.421] release
-* Included predefined Piped scanners in the bot offering.
+1. [v0.45.20240603.432] release
+* Docker builds for multi-arch fixed. Now you have docker build targeted at amd64, arm/v7 as well as arm64 architectures. Download docker desktop now and run with "docker run -it pkjmesra/pkscreener:latest" Enjoy!
+* Added a Quick Backtest Mode (Try T > B followed by the n-th day/candle) for which you'd like to get the maximum potential profitability analysis.
+* Added new pre-defined VCP + ATR trailing stop scanner (P > 16)
 * Modified ATR trailing stop scanner to get better results. Try X > 12 > 30.
-* Lots of improvements for VCP (as per definition by Mark Minervini). Try X > 12 > 7 > 8. Use the config to change the volume ratio and/or volume contraction ratio. By default it is kept as 0.4 (40% of the largest most recent candle and/or SMA of volume)
-* Added more VCP based pre-defined piped scanners. Try P > 1 > 12 or 13 or 14
-* Integrations with the newly released 3rd party data source.
+* Telegram bot reverted back to the older non-LGPL licensed version
+* Moved a number of columns to always-hidden-columns in the pkscreener.ini config file. You can edit it to show the hidden columns on your console.
+* Now set how many results you want displayed by changing the number maxdisplayresults in pkscreener.ini
+* Run scans over the index, by choosing index option 0 and providing the index symbol like ^NSEI etc. You should know the index symbol on your own(Yahoo finance?) and it must start with ^
+* You can pin now the just-finished-scan even when the result count is zero.
 * NOTE: To fit all result columns on your screen, switch to smaller font size in your console.
 
 ## Older Releases
@@ -15,9 +19,9 @@
 ## Downloads
 | Operating System                                                                                         | Executable File                                                                                                                                                                                                               |
 | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white) | **[pkscreenercli.exe](https://github.com/pkjmesra/PKScreener/releases/download/0.45.20240529.421/pkscreenercli.exe)**                                                                                                         |
-| ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)       | **[pkscreenercli.bin](https://github.com/pkjmesra/PKScreener/releases/download/0.45.20240529.421/pkscreenercli.bin)**                                                                                                         |
-| ![Mac OS](https://img.shields.io/badge/mac%20os-D3D3D3?style=for-the-badge&logo=apple&logoColor=000000)  | **[pkscreenercli.run](https://github.com/pkjmesra/PKScreener/releases/download/0.45.20240529.421/pkscreenercli.run)** ([Read Installation Guide](https://github.com/pkjmesra/PKScreener/blob/main/INSTALLATION.md#for-macos)) |
+| ![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white) | **[pkscreenercli.exe](https://github.com/pkjmesra/PKScreener/releases/download/0.45.20240603.432/pkscreenercli.exe)**                                                                                                         |
+| ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)       | **[pkscreenercli.bin](https://github.com/pkjmesra/PKScreener/releases/download/0.45.20240603.432/pkscreenercli.bin)**                                                                                                         |
+| ![Mac OS](https://img.shields.io/badge/mac%20os-D3D3D3?style=for-the-badge&logo=apple&logoColor=000000)  | **[pkscreenercli.run](https://github.com/pkjmesra/PKScreener/releases/download/0.45.20240603.432/pkscreenercli.run)** ([Read Installation Guide](https://github.com/pkjmesra/PKScreener/blob/main/INSTALLATION.md#for-macos)) |
 
 ## How to use?
 

@@ -98,9 +98,8 @@ class StockScreener:
                 hostRef.processingCounter.value += 1
 
             volumeRatio, period = self.determineBasicConfigs(stock, newlyListedOnly, volumeRatio, logLevel, hostRef, configManager, screener, userArgsLog)
-            # hostRef.default_logger.info(
-            #     f"For stock:{stock}, stock exists in objectDictionary:{hostRef.objectDictionaryPrimary.get(stock)}, cacheEnabled:{configManager.cacheEnabled}, isTradingTime:{self.isTradingTime}, downloadOnly:{downloadOnly}"
-            # )
+            # if userArgsLog:
+            #     hostRef.default_logger.info(f"For stock:{stock}, stock exists in objectDictionary:{hostRef.objectDictionaryPrimary.get(stock)}, cacheEnabled:{configManager.cacheEnabled}, isTradingTime:{self.isTradingTime}, downloadOnly:{downloadOnly}")
             data = None
             data = self.getRelevantDataForStock(totalSymbols, shouldCache, stock, downloadOnly, printCounter, backtestDuration, hostRef,hostRef.objectDictionaryPrimary, configManager, fetcher, period,None, testData,exchangeName)
             if not configManager.isIntradayConfig() and configManager.calculatersiintraday:
@@ -230,8 +229,9 @@ class StockScreener:
 
             if processedData.empty:
                 raise StockDataEmptyException("Empty processedData")
-            
-            with SuppressOutput(suppress_stderr=(logLevel==logging.NOTSET), suppress_stdout=(not (printCounter or testbuild))):
+            suppressError = (logLevel==logging.NOTSET)
+            suppressOut = (not (printCounter or testbuild))
+            with SuppressOutput(suppress_stderr=suppressError, suppress_stdout=suppressOut):
                 self.updateStock(stock, screeningDictionary, saveDictionary, executeOption, exchangeName)
                 
                 self.performBasicLTPChecks(executeOption, screeningDictionary, saveDictionary, fullData, configManager, screener, exchangeName)
@@ -642,24 +642,24 @@ class StockScreener:
                 hostRef.default_logger.debug(f"StockDataEmptyException:{stock}: {e}", exc_info=True)
             pass
         except ScreeningStatistics.EligibilityConditionNotMet as e:
-            if userArgsLog:
-                hostRef.default_logger.debug(f"EligibilityConditionNotMet:{stock}: {e}", exc_info=True)
+            # if userArgsLog:
+            #     hostRef.default_logger.debug(f"EligibilityConditionNotMet:{stock}: {e}", exc_info=True)
             pass
         except ScreeningStatistics.NotNewlyListed as e: # pragma: no cover
-            if userArgsLog:
-                hostRef.default_logger.debug(f"NotNewlyListed:{stock}: {e}", exc_info=True)
+            # if userArgsLog:
+            #     hostRef.default_logger.debug(f"NotNewlyListed:{stock}: {e}", exc_info=True)
             pass
         except ScreeningStatistics.NotAStageTwoStock as e: # pragma: no cover
-            if userArgsLog:
-                hostRef.default_logger.debug(f"NotAStageTwoStock:{stock}: {e}", exc_info=True)
+            # if userArgsLog:
+            #     hostRef.default_logger.debug(f"NotAStageTwoStock:{stock}: {e}", exc_info=True)
             pass
         except ScreeningStatistics.NotEnoughVolumeAsPerConfig as e: # pragma: no cover 
-            if userArgsLog:
-                hostRef.default_logger.debug(f"NotEnoughVolumeAsPerConfig:{stock}: {e}", exc_info=True)
+            # if userArgsLog:
+            #     hostRef.default_logger.debug(f"NotEnoughVolumeAsPerConfig:{stock}: {e}", exc_info=True)
             pass
         except ScreeningStatistics.DownloadDataOnly as e: # pragma: no cover
-            if userArgsLog:
-                hostRef.default_logger.debug(f"DownloadDataOnly:{stock}: {e}", exc_info=True)
+            # if userArgsLog:
+            #     hostRef.default_logger.debug(f"DownloadDataOnly:{stock}: {e}", exc_info=True)
             try:
                 data = hostRef.objectDictionaryPrimary.get(stock)
                 if data is not None:
@@ -677,8 +677,8 @@ class StockScreener:
                 pass
             pass
         except ScreeningStatistics.LTPNotInConfiguredRange as e: # pragma: no cover
-            if userArgsLog:
-                hostRef.default_logger.debug(f"LTPNotInConfiguredRange:{stock}: {e}", exc_info=True)
+            # if userArgsLog:
+            #     hostRef.default_logger.debug(f"LTPNotInConfiguredRange:{stock}: {e}", exc_info=True)
             pass
         except KeyError as e: # pragma: no cover
             if userArgsLog:
@@ -921,7 +921,7 @@ class StockScreener:
 
     def determineBasicConfigs(self, stock, newlyListedOnly, volumeRatio, logLevel, hostRef, configManager, screener, userArgsLog):
         if userArgsLog:
-            self.setupLoggers(hostRef, screener, logLevel, stock)
+            self.setupLoggers(hostRef, screener, logLevel, stock, userArgsLog=True)
         period = configManager.period
         if volumeRatio <= 0:
             volumeRatio = configManager.volumeRatio
@@ -967,22 +967,14 @@ class StockScreener:
                 pass
             sys.stdout.write("\r\033[K")
     
-    def setupLoggers(self, hostRef, screener, logLevel, stock):
+    def setupLoggers(self, hostRef, screener, logLevel, stock, userArgsLog=False):
         # Set the loglevels for both the caller and screener
         # Also add handlers that are specific to this sub-process which
         # will continue with the screening. Each sub-process would have
         # its own logger but going into the same file/console > to that
         # of the parent logger.
-        # if hostRef.default_logger.level > 0:
-        #     return
-        # else:
-        # hostRef.default_logger.info(f"Beginning the stock screening for stock:{stock}")
-        # hostRef.default_logger.level = logLevel
         screener.default_logger = hostRef.default_logger
-        # log_file_path = os.path.join(Archiver.get_user_outputs_dir(), "pkscreener-logs.txt")
-        # hostRef.default_logger.addHandlers(log_file_path=log_file_path, levelname=logLevel)
-        # screener.default_logger.addHandlers(log_file_path=log_file_path, levelname=logLevel)
-        # hostRef.default_logger.info(f"Beginning the stock screening for stock:{stock}")
+        screener.shouldLog = userArgsLog
 
     def initResultDictionaries(self):
         periods = self.configManager.periodsRange
@@ -990,12 +982,12 @@ class StockScreener:
             "Stock",
             "LTP",
             "%Chng",
-            "52Wk H",
-            "52Wk L",
+            "52Wk-H",
+            "52Wk-L",
             "RSI",
             "RSIi",
             "Volume",
-            "22-Pd %",
+            "22-Pd",
             "Consol.",
             "Breakout",
             "MA-Signal",
@@ -1008,12 +1000,12 @@ class StockScreener:
             "Stock": "",
             "LTP": 0,
             "%Chng": 0,
-            "52Wk H": 0,
-            "52Wk L": 0,
+            "52Wk-H": 0,
+            "52Wk-L": 0,
             "RSI": 0,
             "RSIi": 0,
             "Volume": "",
-            "22-Pd %": "",
+            "22-Pd": "",
             "Consol.": "Range:0%",
             "Breakout": "BO: 0 R: 0",
             "MA-Signal": "",
@@ -1026,12 +1018,12 @@ class StockScreener:
             "Stock": "",
             "LTP": 0,
             "%Chng": 0,
-            "52Wk H": 0,
-            "52Wk L": 0,
+            "52Wk-H": 0,
+            "52Wk-L": 0,
             "RSI": 0,
             "RSIi": 0,
             "Volume": "",
-            "22-Pd %": "",
+            "22-Pd": "",
             "Consol.": "Range:0%",
             "Breakout": "BO: 0 R: 0",
             "MA-Signal": "",
