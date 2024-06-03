@@ -544,7 +544,10 @@ class tools:
         for df in dfs_to_print:
             counter += 1
             colPixelRunValue = startColValue
-            if df is None or len(df) == 0:
+            try:
+                if df is None or len(df) == 0:
+                    continue
+            except:
                 continue
             # selected menu options and As of DateTime
             draw.text(
@@ -695,8 +698,8 @@ class tools:
             width=2
             * int(
                 len(table.split("\n")[0])
-                if len(table) > 0
-                else len(backtestSummary.split("\n")[0])
+                if (table is not None and len(table) > 0)
+                else (len(backtestSummary.split("\n")[0]) if backtestSummary is not None else 500)
             )
         )
         word_list = wrapper.wrap(text=legendText)
@@ -1154,7 +1157,7 @@ class tools:
         return stockDict,stockDataLoaded
 
     # Save screened results to excel
-    def promptSaveResults(sheetName,df, defaultAnswer=None):
+    def promptSaveResults(sheetName,df, defaultAnswer=None,pastDate=None):
         """
         Tries to save the dataframe output into an excel file.
 
@@ -1179,8 +1182,10 @@ class tools:
             default_logger().debug(e, exc_info=True)
             response = "Y"
         if response is not None and response.upper() != "N":
+            pastDateString = f"{pastDate}_to_" if pastDate is not None else ""
             filename = (
                 "PKScreener-result_"
+                + pastDateString
                 + PKDateUtilities.currentDateTime().strftime("%d-%m-%y_%H.%M.%S")
                 + ".xlsx"
             )

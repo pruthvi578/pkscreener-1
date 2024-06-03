@@ -404,7 +404,7 @@ def handleSecondaryMenuChoices(
                     colorText.BOLD + colorText.FAIL + "[+] Select option: "
                 ) or ('L' if configManager.period == '1y' else 'S')
             OutputControls().printOutput(colorText.END, end="")
-            if periodOption is None or periodOption.upper() not in ["L","S"]:
+            if periodOption is None or periodOption.upper() not in ["L","S","B"]:
                 return
             Utility.tools.clearScreen(forceTop=True)
             if periodOption.upper() in ["L","S"]:
@@ -426,6 +426,19 @@ def handleSecondaryMenuChoices(
                 elif durationOption.upper() in ["5"]:
                     configManager.setConfig(ConfigManager.parser, default=False, showFileCreatedText=True)
                 return
+            elif periodOption.upper() in ["B"]:
+                backtestDaysAgo = input(
+                    colorText.BOLD + colorText.FAIL + "[+] Enter no. of days/candles in the past as starting candle for which you'd like to run the scans (e.g. 10 for 10 candles ago or 0 for today):"
+                ) or ('22' if configManager.period == '1y' else '15')
+                OutputControls().printOutput(colorText.END, end="")
+                launcher = f'"{sys.argv[0]}"' if " " in sys.argv[0] else sys.argv[0]
+                requestingUser = f" -u {userPassedArgs.user}" if userPassedArgs.user is not None else ""
+                enableLog = f" -l" if userPassedArgs.log else ""
+                launcher = f"python3.11 {launcher}" if (launcher.endswith(".py\"") or launcher.endswith(".py")) else launcher
+                OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener in quick backtest mode. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} --backtestdaysago {int(backtestDaysAgo)}{requestingUser}{enableLog}{colorText.END}\n{colorText.WARN}Press Ctrl + C to exit quick backtest mode.{colorText.END}")
+                sleep(2)
+                os.system(f"{launcher} --systemlaunched -a Y -e --backtestdaysago {int(backtestDaysAgo)}{requestingUser}{enableLog}")
+                sys.exit(0)
         elif userPassedArgs is not None and userPassedArgs.options is not None:
             options = userPassedArgs.options.split(":")
             selectedMenu = m0.find(options[0])
@@ -471,6 +484,8 @@ def initExecution(menuOption=None):
     )
     m0.renderForMenu(selectedMenu=None)
     try:
+        needsCalc = userPassedArgs is not None and userPassedArgs.backtestdaysago is not None
+        pastDate = f"[+] [ Running in Quick Backtest Mode for {colorText.WARN}{PKDateUtilities.nthPastTradingDateStringFromFutureDate(int(userPassedArgs.backtestdaysago) if needsCalc else 0)}{colorText.END} ]\n" if needsCalc else ""
         if menuOption is None:
             if "PKDevTools_Default_Log_Level" in os.environ.keys():
                 from PKDevTools.classes import Archiver
@@ -478,7 +493,7 @@ def initExecution(menuOption=None):
                 OutputControls().printOutput(colorText.FAIL + "\n    [+] Logs will be written to:"+colorText.END)
                 OutputControls().printOutput(colorText.GREEN + f"    [+] {log_file_path}"+colorText.END)
                 OutputControls().printOutput(colorText.FAIL + "    [+] If you need to share,run through the menus that are causing problems. At the end, open this folder, zip the log file to share at https://github.com/pkjmesra/PKScreener/issues .\n" + colorText.END)
-            menuOption = input(colorText.BOLD + colorText.FAIL + "[+] Select option: ")
+            menuOption = input(colorText.BOLD + colorText.FAIL + f"{pastDate}[+] Select option: ")
             OutputControls().printOutput(colorText.END, end="")
         if menuOption == "" or menuOption is None:
             menuOption = "X"
@@ -530,9 +545,11 @@ def initPostLevel0Execution(
         selectedMenu = m0.find(menuOption)
         m1.renderForMenu(selectedMenu=selectedMenu, skip=skip)
     try:
+        needsCalc = userPassedArgs is not None and userPassedArgs.backtestdaysago is not None
+        pastDate = f"[+] [ Running in Quick Backtest Mode for {colorText.WARN}{PKDateUtilities.nthPastTradingDateStringFromFutureDate(int(userPassedArgs.backtestdaysago) if needsCalc else 0)}{colorText.END} ]\n" if needsCalc else ""
         if indexOption is None:
             indexOption = input(
-                colorText.BOLD + colorText.FAIL + "[+] Select option: "
+                colorText.BOLD + colorText.FAIL + f"{pastDate}[+] Select option: "
             )
             OutputControls().printOutput(colorText.END, end="")
         if indexOption == "" or indexOption is None:
@@ -588,10 +605,12 @@ def initPostLevel1Execution(indexOption, executeOption=None, skip=[], retrial=Fa
             selectedMenu = m1.find(indexOption)
             m2.renderForMenu(selectedMenu=selectedMenu, skip=skip)
     try:
+        needsCalc = userPassedArgs is not None and userPassedArgs.backtestdaysago is not None
+        pastDate = f"[+] [ Running in Quick Backtest Mode for {colorText.WARN}{PKDateUtilities.nthPastTradingDateStringFromFutureDate(int(userPassedArgs.backtestdaysago) if needsCalc else 0)}{colorText.END} ]\n" if needsCalc else ""
         if indexOption is not None and indexOption != "W":
             if executeOption is None:
                 executeOption = input(
-                    colorText.BOLD + colorText.FAIL + "[+] Select option: "
+                    colorText.BOLD + colorText.FAIL + f"{pastDate}[+] Select option: "
                 ) or "9"
                 OutputControls().printOutput(colorText.END, end="")
             if executeOption == "":
@@ -782,8 +801,8 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
     selectedMenu = initExecution(menuOption=menuOption)
     menuOption = selectedMenu.menuKey
     if menuOption in ["M", "D", "I", "L"]:
-        launcher = f'"{sys.argv[0]}"'
-        launcher = f"python3.11 {launcher}" if launcher.endswith(".py\"") else launcher
+        launcher = f'"{sys.argv[0]}"' if " " in sys.argv[0] else sys.argv[0]
+        launcher = f"python3.11 {launcher}" if (launcher.endswith(".py\"") or launcher.endswith(".py")) else launcher
         if menuOption in ["M"]:
             OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener in monitoring mode. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -m 'X'{colorText.END}\n{colorText.WARN}Press Ctrl + C to exit monitoring mode.{colorText.END}")
             sleep(2)
@@ -810,8 +829,10 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
         updateMenuChoiceHierarchy()
         selectedMenu = m0.find(menuOption)
         m1.renderForMenu(selectedMenu)
+        needsCalc = userPassedArgs is not None and userPassedArgs.backtestdaysago is not None
+        pastDate = f"[+] [ Running in Quick Backtest Mode for {colorText.WARN}{PKDateUtilities.nthPastTradingDateStringFromFutureDate(int(userPassedArgs.backtestdaysago) if needsCalc else 0)}{colorText.END} ]\n" if needsCalc else ""
         if predefinedOption is None:
-            predefinedOption = input(colorText.BOLD + colorText.FAIL + "[+] Select option: ") or "1"
+            predefinedOption = input(colorText.BOLD + colorText.FAIL + f"{pastDate}[+] Select option: ") or "1"
         OutputControls().printOutput(colorText.END, end="")
         if predefinedOption not in ["1","2","3"]:
             return None, None
@@ -820,7 +841,7 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
             selectedMenu = m1.find(predefinedOption)
             m2.renderForMenu(selectedMenu=selectedMenu)
             if selPredefinedOption is None:
-                selPredefinedOption = input(colorText.BOLD + colorText.FAIL + "[+] Select option: ") or "1"
+                selPredefinedOption = input(colorText.BOLD + colorText.FAIL + f"{pastDate}[+] Select option: ") or "1"
             OutputControls().printOutput(colorText.END, end="")
             if selPredefinedOption in PREDEFINED_SCAN_MENU_KEYS:
                 scannerOption = PIPED_SCANNERS[selPredefinedOption]
@@ -829,13 +850,15 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
                     chosenOptions = scannerOption.split("-o ")[1]
                     userPassedArgs.options = chosenOptions.replace("'","")
                     return addOrRunPipedMenus()
-                launcher = f'"{sys.argv[0]}"'
-                launcher = f"python3.11 {launcher}" if launcher.endswith(".py\"") else launcher
+                launcher = f'"{sys.argv[0]}"' if " " in sys.argv[0] else sys.argv[0]
+                launcher = f"python3.11 {launcher}" if (launcher.endswith(".py\"") or launcher.endswith(".py")) else launcher
                 scannerOptionQuoted = scannerOption.replace("'",'"')
                 requestingUser = f" -u {userPassedArgs.user}" if userPassedArgs.user is not None else ""
-                OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener with piped scanners. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} {scannerOptionQuoted}{requestingUser}{colorText.END}")
+                enableLog = f" -l" if userPassedArgs.log else ""
+                backtestParam = f" --backtestdaysago {userPassedArgs.backtestdaysago}" if userPassedArgs.backtestdaysago else ""
+                OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener with piped scanners. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} {scannerOptionQuoted}{requestingUser}{enableLog}{backtestParam}{colorText.END}")
                 sleep(2)
-                os.system(f"{launcher} {scannerOptionQuoted}{requestingUser}")
+                os.system(f"{launcher} {scannerOptionQuoted}{requestingUser}{enableLog}{backtestParam}")
                 OutputControls().printOutput(
                         colorText.GREEN
                         + f"[+] Finished running all piped scanners!"
@@ -987,7 +1010,7 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
     executeOption = int(executeOption)
     volumeRatio = configManager.volumeRatio
     if executeOption == 3:
-        userPassedArgs.maxdisplayresults = 2000 # force evaluate all stocks before getting the top results
+        userPassedArgs.maxdisplayresults = max(configManager.maxdisplayresults,2000) # force evaluate all stocks before getting the top results
     if executeOption == 4:
         daysForLowestVolume = handleScannerExecuteOption4(executeOption, options)
     if executeOption == 5:
@@ -1098,7 +1121,7 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
         ):
             return None, None
         else:
-            userPassedArgs.maxdisplayresults = 2000 if respChartPattern in [3,4,5,8,9] else userPassedArgs.maxdisplayresults
+            userPassedArgs.maxdisplayresults = max(configManager.maxdisplayresults,2000) if respChartPattern in [3,4,5,8,9] else min(configManager.maxdisplayresults,userPassedArgs.maxdisplayresults)
             selectedChoice["3"] = str(respChartPattern)
             selectedChoice["4"] = str(insideBarToLookback) if (respChartPattern in [1, 2, 3] and (userPassedArgs is not None and userPassedArgs.pipedmenus is not None)) else str(maLength)
             selectedChoice["5"] = str(maLength) if (respChartPattern in [1, 2, 3] and (userPassedArgs is not None and userPassedArgs.pipedmenus is not None)) else ""
@@ -1181,7 +1204,7 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
             else:
                 listStockCodes = ",".join(list(screenResults.index))
         else:
-            userPassedArgs.maxdisplayresults = 2000 # force evaluate all stocks before getting the top results
+            userPassedArgs.maxdisplayresults = max(configManager.maxdisplayresults,2000) # force evaluate all stocks before getting the top results
             reversalOption = popOption
     if executeOption == 22:
         selectedMenu = m2.find(str(executeOption))
@@ -1260,6 +1283,9 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
             atrEma = input(colorText.WARN + f"Enter the ATR EMA period (Optimal:200, Current={configManager.atrTrailingStopEMAPeriod}):") or configManager.atrTrailingStopEMAPeriod
             configManager.atrTrailingStopEMAPeriod = atrEma
             configManager.setConfig(ConfigManager.parser,default=True,showFileCreatedText=False)
+        # Ensure we have the template JSONs from vectorBt
+        screener.shouldLog = userPassedArgs.log
+        screener.computeBuySellSignals(None)
 
     if executeOption == 42:
         Utility.tools.getLastScreenedResults(defaultAnswer)
@@ -1588,8 +1614,9 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
         pass
     if "RUNNER" not in os.environ.keys() and not testing and (userPassedArgs is None or (userPassedArgs is not None and userPassedArgs.user is None and (userPassedArgs.answerdefault is None or userPassedArgs.systemlaunched))):
         prevOutput_results = saveResults.index if (saveResults is not None and not saveResults.empty) else []
-        hasFoundStocks = len(prevOutput_results) > 0 and (("|" not in userPassedArgs.options) if (userPassedArgs is not None and userPassedArgs.options is not None) else True)
-        if hasFoundStocks:
+        isNotPiped = (("|" not in userPassedArgs.options) if (userPassedArgs is not None and userPassedArgs.options is not None) else True)
+        hasFoundStocks = len(prevOutput_results) > 0 and isNotPiped
+        if hasFoundStocks or (configManager.showPinnedMenuEvenForNoResult and isNotPiped):
             monitorOption = userPassedArgs.systemlaunched if (userPassedArgs is not None and isinstance(userPassedArgs.systemlaunched,str) and userPassedArgs.systemlaunched is not None) else (userPassedArgs.options if (userPassedArgs is not None and userPassedArgs.options is not None) else "")
             if len(monitorOption) == 0:
                 for choice in selectedChoice.keys():
@@ -1604,8 +1631,8 @@ def main(userArgs=None,optionalFinalOutcome_df=None):
                     monitorOption = "X:0:0"
                     prevOutput_results = ",".join(prevOutput_results)
                     monitorOption = f"{monitorOption}:{prevOutput_results}"
-                launcher = f'"{sys.argv[0]}"'
-                launcher = f"python3.11 {launcher}" if launcher.endswith(".py\"") else launcher
+                launcher = f'"{sys.argv[0]}"' if " " in sys.argv[0] else sys.argv[0]
+                launcher = f"python3.11 {launcher}" if (launcher.endswith(".py\"") or launcher.endswith(".py")) else launcher
                 monitorOption = f'"{monitorOption}"'
                 scannerOptionQuoted = monitorOption.replace("'",'"')
                 OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener with pinned scan option. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -m {scannerOptionQuoted}{colorText.END}")
@@ -1736,14 +1763,16 @@ def addOrRunPipedMenus():
     if userPassedArgs is None or (userPassedArgs is not None and userPassedArgs.answerdefault is None):
         shouldAddMoreIntoPipe = input(colorText.FAIL + "[+] Select [Y/N] (Default:N): " + colorText.END) or 'n'
     if shouldAddMoreIntoPipe.lower() != 'y':
-        launcher = f'"{sys.argv[0]}"'
-        launcher = f"python3.11 {launcher}" if launcher.endswith(".py\"") else launcher
+        launcher = f'"{sys.argv[0]}"' if " " in sys.argv[0] else sys.argv[0]
+        launcher = f"python3.11 {launcher}" if (launcher.endswith(".py\"") or launcher.endswith(".py")) else launcher
         monitorOption = f'"{userPassedArgs.pipedmenus}"'
         scannerOptionQuoted = monitorOption.replace("'",'"').replace(":>",":D:D:D:>").replace("::",":")
         requestingUser = f" -u {userPassedArgs.user}" if userPassedArgs.user is not None else ""
-        OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener with piped scanners. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -e -o {scannerOptionQuoted}{requestingUser}{colorText.END}")
+        enableLog = f" -l" if userPassedArgs.log else ""
+        backtestParam = f" --backtestdaysago {userPassedArgs.backtestdaysago}" if userPassedArgs.backtestdaysago else ""
+        OutputControls().printOutput(f"{colorText.GREEN}Launching PKScreener with piped scanners. If it does not launch, please try with the following:{colorText.END}\n{colorText.FAIL}{launcher} -a Y -e -o {scannerOptionQuoted}{requestingUser}{enableLog}{backtestParam}{colorText.END}")
         sleep(2)
-        os.system(f"{launcher} --systemlaunched -a Y -e -o {scannerOptionQuoted}{requestingUser}")
+        os.system(f"{launcher} --systemlaunched -a Y -e -o {scannerOptionQuoted}{requestingUser}{enableLog}{backtestParam}")
         userPassedArgs.pipedmenus = None
         OutputControls().printOutput(
                 colorText.GREEN
@@ -2028,19 +2057,21 @@ def updateMenuChoiceHierarchy():
                 menuChoiceHierarchy
                 + f'>{level3_X_PopularStocks_MenuDict[selectedChoice["3"]].strip()}'
             )
-        intraday = "(Intraday)" if (userPassedArgs is not None and userPassedArgs.intraday) or configManager.isIntradayConfig() else ""
+        intraday = "(Intraday)" if ("Intraday" not in menuChoiceHierarchy and (userPassedArgs is not None and userPassedArgs.intraday) or configManager.isIntradayConfig()) else ""
         menuChoiceHierarchy = f"{menuChoiceHierarchy}{intraday}"
         global nValueForMenu
         menuChoiceHierarchy = menuChoiceHierarchy.replace("N-",f"{nValueForMenu}-")
     except:
         pass
     Utility.tools.clearScreen(forceTop=True)
+    needsCalc = userPassedArgs is not None and userPassedArgs.backtestdaysago is not None
+    pastDate = f"[ {PKDateUtilities.nthPastTradingDateStringFromFutureDate(int(userPassedArgs.backtestdaysago) if needsCalc else 0)} ]" if needsCalc else ""
     OutputControls().printOutput(
         colorText.BOLD
         + colorText.FAIL
         + "[+] You chose: "
         + menuChoiceHierarchy
-        + (f" (Piped Scan Mode) [{userPassedArgs.pipedmenus}]" if (userPassedArgs is not None and userPassedArgs.pipedmenus is not None) else "")
+        + (f" (Piped Scan Mode) [{userPassedArgs.pipedmenus}] {pastDate}" if (userPassedArgs is not None and userPassedArgs.pipedmenus is not None) else "")
         + colorText.END
     )
     default_logger().info(menuChoiceHierarchy)
@@ -2052,7 +2083,7 @@ def printNotifySaveScreenedResults(
     global userPassedArgs, elapsed_time
     if userPassedArgs.monitor is not None:
         return
-    MAX_ALLOWED = (100 if userPassedArgs.maxdisplayresults is None else min(int(userPassedArgs.maxdisplayresults),100)) if not testing else 1
+    MAX_ALLOWED = (configManager.maxdisplayresults if userPassedArgs.maxdisplayresults is None else (int(userPassedArgs.maxdisplayresults) if not testing else 1))
     tabulated_backtest_summary = ""
     tabulated_backtest_detail = ""
     recordDate = PKDateUtilities.tradingDate().strftime('%Y-%m-%d') if (userPassedArgs.backtestdaysago is None) else (PKDateUtilities.nthPastTradingDateStringFromFutureDate(int(userPassedArgs.backtestdaysago)))
@@ -2085,12 +2116,25 @@ def printNotifySaveScreenedResults(
     summaryReturns = removedUnusedColumns(screenResults, saveResults, ["Date","Breakout","Resistance"],userArgs=userPassedArgs)
 
     tabulated_results = ""
+    console_results = ""
     if screenResults is not None and len(screenResults) > 0:
         tabulated_results = colorText.miniTabulator().tabulate(
             screenResults, headers="keys", tablefmt=colorText.No_Pad_GridFormat,
             maxcolwidths=Utility.tools.getMaxColumnWidths(screenResults)
         ).encode("utf-8").decode(STD_ENCODING)
-    OutputControls().printOutput(f"{tabulated_results}\n", enableMultipleLineOutput=True)
+        copyScreenResults = screenResults.copy()
+        hiddenColumns = configManager.alwaysHiddenDisplayColumns.split(",")
+        for col in screenResults.columns:
+            if col in hiddenColumns:
+                copyScreenResults.drop(col, axis=1, inplace=True, errors="ignore")
+        try:
+            console_results = colorText.miniTabulator().tabulate(
+                                    copyScreenResults, headers="keys", tablefmt=colorText.No_Pad_GridFormat,
+                                    maxcolwidths=Utility.tools.getMaxColumnWidths(copyScreenResults)
+                                ).encode("utf-8").decode(STD_ENCODING)
+        except:
+            console_results = tabulated_results
+    OutputControls().printOutput(f"{console_results}\n", enableMultipleLineOutput=True)
     _, reportNameInsights = getBacktestReportFilename(
         sortKey="Date", optionalName="Insights"
     )
@@ -2153,17 +2197,22 @@ def printNotifySaveScreenedResults(
                         tablefmt=colorText.No_Pad_GridFormat,
                         maxcolwidths=Utility.tools.getMaxColumnWidths(saveResultsTrimmed)
                     ).encode("utf-8").decode(STD_ENCODING)
-                    caption_df = saveResultsTrimmed[['LTP','%Chng','Volume']].head(5)
-                    caption_df.loc[:, "LTP"] = caption_df.loc[:, "LTP"].apply(
-                        lambda x: str(int(round(float(x),0)))
-                    )
-                    caption_df.loc[:, "%Chng"] = caption_df.loc[:, "%Chng"].apply(
-                        lambda x: f'{int(round(float(x.replace("%","")),0))}%'
-                    )
-                    caption_df.loc[:, "Volume"] = caption_df.loc[:, "Volume"].apply(
-                        lambda x: f'{int(round(float(x.replace("x","")),0))}x' if (len(x.replace("x","").strip()) > 0 and not pd.isna(float(x.replace("x","")))) else ''
-                    )
-                    caption_df.rename(columns={"%Chng": "Ch%","Volume":"Vol"}, inplace=True)
+                    try:
+                        caption_df = saveResultsTrimmed[['LTP','%Chng','Volume']].head(5)
+                        caption_df.loc[:, "LTP"] = caption_df.loc[:, "LTP"].apply(
+                            lambda x: str(int(round(float(x),0)))
+                        )
+                        caption_df.loc[:, "%Chng"] = caption_df.loc[:, "%Chng"].apply(
+                            lambda x: f'{int(round(float(x.replace("%","")),0))}%'
+                        )
+                        caption_df.loc[:, "Volume"] = caption_df.loc[:, "Volume"].apply(
+                            lambda x: f'{int(round(float(x.replace("x","")),0))}x' if (len(x.replace("x","").strip()) > 0 and not pd.isna(float(x.replace("x","")))) else ''
+                        )
+                        caption_df.rename(columns={"%Chng": "Ch%","Volume":"Vol"}, inplace=True)
+                    except:
+                        cols = [list(saveResultsTrimmed.columns)[0]]
+                        cols.extend(list(saveResultsTrimmed.columns[5:]))
+                        caption_df = saveResultsTrimmed[cols].head(2)
                     for col in caption_df.columns:
                         caption_df[col] = caption_df[col].astype(str)
                     caption_results = colorText.miniTabulator().tabulate(
@@ -2172,7 +2221,7 @@ def printNotifySaveScreenedResults(
                         tablefmt=colorText.No_Pad_GridFormat,
                         maxcolwidths=[None,None,4,3]
                     ).encode("utf-8").decode(STD_ENCODING).replace("-K-----S-----C-----R","-K-----S----C---R").replace("%  ","% ").replace("=K=====S=====C=====R","=K=====S====C===R").replace("Vol  |","Vol|").replace("x  ","x")
-                    caption_results = caption_results.replace("-E-----N-----E-----R","-E-----N----E---R").replace("=E=====N=====E=====R","=E=====N====E===R")
+                    caption_results = Utility.tools.removeAllColorStyles(caption_results.replace("-E-----N-----E-----R","-E-----N----E---R").replace("=E=====N=====E=====R","=E=====N====E===R"))
                     caption = f"{caption}.Open attached image for more. Samples:<pre>{caption_results}</pre>{elapsed_text}{pipedTitle}" #<i>Author is <u><b>NOT</b> a SEBI registered financial advisor</u> and MUST NOT be deemed as one.</i>"
                 if not testing: # and not userPassedArgs.runintradayanalysis:
                     sendQuickScanResult(
@@ -2197,22 +2246,23 @@ def printNotifySaveScreenedResults(
                         )
                         try:
                             # import traceback
-                            Utility.tools.tableToImage(
-                                "",
-                                "",
-                                pngName + backtestExtension,
-                                menuChoiceHierarchy,
-                                backtestSummary=tabulated_backtest_summary,
-                                backtestDetail=tabulated_backtest_detail,
-                            )
-                            caption = f"Backtest data for stocks listed in <b>{title}</b> scan results. See more past backtest data at https://pkjmesra.github.io/PKScreener/BacktestReports.html"
-                            sendMessageToTelegramChannel(
-                                message=None,
-                                document_filePath=pngName + backtestExtension,
-                                caption=caption,
-                                user=user,
-                            )
-                            os.remove(pngName + backtestExtension)
+                            if tabulated_backtest_summary is not None:
+                                Utility.tools.tableToImage(
+                                    "",
+                                    "",
+                                    pngName + backtestExtension,
+                                    menuChoiceHierarchy,
+                                    backtestSummary=tabulated_backtest_summary,
+                                    backtestDetail=tabulated_backtest_detail,
+                                )
+                                caption = f"Backtest data for stocks listed in <b>{title}</b> scan results. See more past backtest data at https://pkjmesra.github.io/PKScreener/BacktestReports.html"
+                                sendMessageToTelegramChannel(
+                                    message=None,
+                                    document_filePath=pngName + backtestExtension,
+                                    caption=caption,
+                                    user=user,
+                                )
+                                os.remove(pngName + backtestExtension)
                         except Exception as e:  # pragma: no cover
                             default_logger().debug(e, exc_info=True)
                             pass
@@ -2224,10 +2274,12 @@ def printNotifySaveScreenedResults(
                 tabulateBacktestResults(saveResults)
         else:
             tabulateBacktestResults(saveResults)
+            needsCalc = userPassedArgs is not None and userPassedArgs.backtestdaysago is not None
+            pastDate = PKDateUtilities.nthPastTradingDateStringFromFutureDate(int(userPassedArgs.backtestdaysago) if needsCalc else 0)
             OutputControls().printOutput(
                 colorText.BOLD
                 + colorText.GREEN
-                + f"[+] Found {len(screenResults) if screenResults is not None else 0} Stocks in {str('{:.2f}'.format(elapsed_time))} sec. Showing only stocks that met the filter criteria in the filters section of user configuration{(' with portfolio returns:' + summaryReturns) if (len(summaryReturns) > 0) else ''}"
+                + f"[+] Found {len(screenResults) if screenResults is not None else 0} Stocks in {str('{:.2f}'.format(elapsed_time))} sec for {pastDate}. Showing only stocks that met the filter criteria in the filters section of user configuration{(' with portfolio returns:' + summaryReturns) if (len(summaryReturns) > 0) else ''}"
                 + colorText.END
             )
     elif user is not None:
@@ -2282,7 +2334,7 @@ def prepareGrowthOf10kResults(saveResults, selectedChoice, menuChoiceHierarchy, 
 def removedUnusedColumns(screenResults, saveResults, dropAdditionalColumns=[], userArgs=None):
     periods = configManager.periodsRange
     if userArgs is not None and userArgs.backtestdaysago is not None and int(userArgs.backtestdaysago) < 22:
-        dropAdditionalColumns.append("22-Pd %")
+        dropAdditionalColumns.append("22-Pd")
     summaryReturns = "" #("w.r.t. " + saveResults["Date"].iloc[0]) if "Date" in saveResults.columns else ""
     for period in periods:
         if saveResults is not None:
@@ -2513,7 +2565,6 @@ def runScanners(
             result = None
             backtest_df = None
             start_time = time.time()
-
             def processResultsCallback(resultItem, processedCount,result_df, *otherArgs):
                 global userPassedArgs
                 (menuOption, backtestPeriod, result, lstscreen, lstsave) = otherArgs
@@ -2624,7 +2675,7 @@ def getReviewDate(userPassedArgs=None):
     return reviewDate
 
 def getMaxAllowedResultsCount(iterations, testing):
-    return iterations * (100 if userPassedArgs.maxdisplayresults is None else int(userPassedArgs.maxdisplayresults)) if not testing else 1
+    return iterations * (configManager.maxdisplayresults if userPassedArgs.maxdisplayresults is None else int(userPassedArgs.maxdisplayresults)) if not testing else 1
 
 def getIterationsAndStockCounts(numStocks, iterations):
     if numStocks <= 2500:
@@ -2696,8 +2747,8 @@ def saveDownloadedData(downloadOnly, testing, stockDictPrimary, configManager, l
                 except:
                     pass
                 # Let's try again with logging
-                launcher = f'"{sys.argv[0]}"'
-                launcher = f"python3.11 {launcher}" if launcher.endswith(".py\"") else launcher
+                launcher = f'"{sys.argv[0]}"' if " " in sys.argv[0] else sys.argv[0]
+                launcher = f"python3.11 {launcher}" if (launcher.endswith(".py\"") or launcher.endswith(".py")) else launcher
                 os.system(f"{launcher} -a Y -e -l -d {'-i 1m' if configManager.isIntradayConfig() else ''}")
     else:
         OutputControls().printOutput(colorText.BOLD + colorText.GREEN + "[+] Skipped Saving!" + colorText.END)
@@ -2712,9 +2763,10 @@ def saveNotifyResultsFile(
     caption = f'<b>{menuChoiceHierarchy.split(">")[-1]}</b>'
     if screenResults is not None and len(screenResults) >= 1:
         choices = PKScanRunner.getFormattedChoices(userPassedArgs,selectedChoice)
+        needsCalc = userPassedArgs is not None and userPassedArgs.backtestdaysago is not None
+        pastDate = PKDateUtilities.nthPastTradingDateStringFromFutureDate(int(userPassedArgs.backtestdaysago) if needsCalc else 0) if needsCalc else None
         filename = Utility.tools.promptSaveResults(choices,
-            saveResults, defaultAnswer=defaultAnswer
-        )
+            saveResults, defaultAnswer=defaultAnswer,pastDate=pastDate)
         # if filename is not None:
         #     sendMessageToTelegramChannel(
         #         document_filePath=filename, caption=caption, user=user
@@ -2722,7 +2774,7 @@ def saveNotifyResultsFile(
         OutputControls().printOutput(
             colorText.BOLD
             + colorText.WARN
-            + "[+] Notes:1.Trend calculation is based on 'daysToLookBack'. See configuration. 2.Reduce the console font size to fit all columns on screen."
+            + "[+] Notes:1.Trend calculation is based on 'daysToLookBack'. See configuration.\n[+] 2.Reduce the console font size to fit all columns on screen.\n[+] Many columns may have been hidden. Please check pkscreener.ini config."
             + colorText.END
         )
         # try:
@@ -2731,10 +2783,12 @@ def saveNotifyResultsFile(
         # except Exception as e:  # pragma: no cover
         #     default_logger().debug(e, exc_info=True)
     if userPassedArgs.monitor is None:
+        needsCalc = userPassedArgs is not None and userPassedArgs.backtestdaysago is not None
+        pastDate = PKDateUtilities.nthPastTradingDateStringFromFutureDate(int(userPassedArgs.backtestdaysago) if needsCalc else 0)
         OutputControls().printOutput(
             colorText.BOLD
             + colorText.GREEN
-            + f"[+] Screening Completed. Found {len(screenResults) if screenResults is not None else 0} results in {round(elapsed_time,2)} sec.! Press Enter to Continue.."
+            + f"[+] Screening Completed. Found {len(screenResults) if screenResults is not None else 0} results in {round(elapsed_time,2)} sec. for {pastDate}! Press Enter to Continue.."
             + colorText.END
             , enableMultipleLineOutput=True
         )
@@ -2781,7 +2835,7 @@ def sendMessageToTelegramChannel(
         try:
             if caption is not None:
                 caption = f"{caption.replace('&','n')}"
-            send_photo(photo_filePath, caption, userID=user)
+            send_photo(photo_filePath, (caption if len(caption) <=1024 else ""), userID=user)
             # Breather for the telegram API to be able to send the heavy photo
             sleep(2)
         except Exception as e:  # pragma: no cover
@@ -2790,7 +2844,7 @@ def sendMessageToTelegramChannel(
         try:
             if caption is not None:
                 caption = f"{caption.replace('&','n')}"
-            send_document(document_filePath, caption, userID=user)
+            send_document(document_filePath, (caption if len(caption) <=1024 else ""), userID=user)
             # Breather for the telegram API to be able to send the document
             sleep(2)
         except Exception as e:  # pragma: no cover

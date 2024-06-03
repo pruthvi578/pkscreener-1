@@ -43,6 +43,7 @@ class MarketMonitor(SingletonMixin, metaclass=SingletonType):
             self.monitorIndex = 0
             self.monitorPositions = {}
             self.monitorResultStocks = {}
+            self.hiddenColumns = ""
             # self.monitorNames = {}
             # We are going to present the dataframes in a 3x3 matrix with limited set of columns
             rowIndex = 0
@@ -107,19 +108,19 @@ class MarketMonitor(SingletonMixin, metaclass=SingletonType):
             self.monitor_df = screen_monitor_df
         else:
             screen_monitor_df.reset_index(inplace=True)
-            screen_monitor_df = screen_monitor_df[["Stock", "LTP", "%Chng","52Wk H","RSI/i" if "RSI/i" in screen_monitor_df.columns else "RSI","Volume"]].head(self.maxNumRowsInEachResult-1)
+            screen_monitor_df = screen_monitor_df[["Stock", "LTP", "%Chng","52Wk-H","RSI/i" if "RSI/i" in screen_monitor_df.columns else "RSI","Volume"]].head(self.maxNumRowsInEachResult-1)
             # Import Utility here since Utility has dependency on PKScheduler which in turn has dependency on 
             # multiprocessing, which behaves erratically if imported at the top.
             screen_monitor_df.loc[:, "%Chng"] = screen_monitor_df.loc[:, "%Chng"].apply(
                         lambda x: Utility.tools.roundOff(str(x).split("% (")[0] + colorText.END,0)
                     )
-            screen_monitor_df.loc[:, "52Wk H"] = screen_monitor_df.loc[:, "52Wk H"].apply(
+            screen_monitor_df.loc[:, "52Wk-H"] = screen_monitor_df.loc[:, "52Wk-H"].apply(
                 lambda x: Utility.tools.roundOff(x,0)
             )
             screen_monitor_df.loc[:, "Volume"] = screen_monitor_df.loc[:, "Volume"].apply(
                 lambda x: Utility.tools.roundOff(x,0)
             )
-            screen_monitor_df.rename(columns={"%Chng": "Ch%","Volume":"Vol","52Wk H":"52WkH", "RSI":"RSI/i"}, inplace=True)
+            screen_monitor_df.rename(columns={"%Chng": "Ch%","Volume":"Vol","52Wk-H":"52WkH", "RSI":"RSI/i"}, inplace=True)
             telegram_df = self.updateDataFrameForTelegramMode(telegram, screen_monitor_df)
         
         
@@ -181,9 +182,23 @@ class MarketMonitor(SingletonMixin, metaclass=SingletonType):
             highlightedColumns=highlightCols,
             maxcolwidths=Utility.tools.getMaxColumnWidths(self.monitor_df)
         )
+        console_results = ""
+        if self.isPinnedSingleMonitorMode:
+            copyScreenResults = self.monitor_df.copy()
+            hiddenColumns = self.hiddenColumns.split(",")
+            for col in copyScreenResults.columns:
+                if col in hiddenColumns:
+                    copyScreenResults.drop(col, axis=1, inplace=True, errors="ignore")
+            try:
+                console_results = colorText.miniTabulator().tabulate(
+                        copyScreenResults, headers="keys", tablefmt=colorText.No_Pad_GridFormat,
+                        maxcolwidths=Utility.tools.getMaxColumnWidths(copyScreenResults)
+                    )
+            except:
+                console_results = tabulated_results
         numRecords = len(tabulated_results.splitlines())
         self.lines = numRecords + 1 # 1 for the progress bar at the bottom and 1 for the chosenMenu option
-        OutputControls().printOutput(tabulated_results, enableMultipleLineOutput=True)
+        OutputControls().printOutput(tabulated_results if not self.isPinnedSingleMonitorMode else console_results, enableMultipleLineOutput=True)
         
         if not self.isPinnedSingleMonitorMode:
             if telegram:

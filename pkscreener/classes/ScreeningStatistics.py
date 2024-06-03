@@ -84,9 +84,10 @@ class StockDataNotAdequate(Exception):
 
 # This Class contains methods for stock analysis and screening validation
 class ScreeningStatistics:
-    def __init__(self, configManager, default_logger) -> None:
+    def __init__(self, configManager, default_logger,shouldLog=False) -> None:
         self.configManager = configManager
         self.default_logger = default_logger
+        self.shouldLog = shouldLog
 
     # Find stocks that have broken through 52 week high.
     def find52WeekHighBreakout(self, df):
@@ -98,22 +99,11 @@ class ScreeningStatistics:
         data = data.replace([np.inf, -np.inf], 0)
         one_week = 5
         recent = data.head(1)["High"].iloc[0]
-        # last1Week = data.head(one_week)
-        # last2Week = data.head(2 * one_week)
-        # previousWeek = last2Week.tail(one_week)
         full52Week = data.head(50 * one_week)
-        # last1WeekHigh = last1Week["High"].max()
-        # previousWeekHigh = previousWeek["High"].max()
         full52WeekHigh = full52Week["High"].max()
-        return (
-            (recent >= full52WeekHigh)
-            # or (last1WeekHigh >= max(full52WeekHigh, last1WeekHigh))
-            # or (
-            #     last1WeekHigh
-            #     >= previousWeekHigh
-            #     >= max(full52WeekHigh, previousWeekHigh)
-            # )
-        )
+        # if self.shouldLog:
+        #     self.default_logger.debug(data.head(10))
+        return recent >= full52WeekHigh
 
     #@measure_time
     # Find stocks' 52 week high/low.
@@ -131,8 +121,8 @@ class ScreeningStatistics:
         full52WeekHigh = full52Week["High"].max()
         full52WeekLow = full52Week["Low"].min()
 
-        saveDict["52Wk H"] = "{:.2f}".format(full52WeekHigh)
-        saveDict["52Wk L"] = "{:.2f}".format(full52WeekLow)
+        saveDict["52Wk-H"] = "{:.2f}".format(full52WeekHigh)
+        saveDict["52Wk-L"] = "{:.2f}".format(full52WeekLow)
         if recentHigh >= full52WeekHigh:
             highColor = colorText.GREEN
         elif recentHigh >= 0.9 * full52WeekHigh:
@@ -146,11 +136,13 @@ class ScreeningStatistics:
         else:
             lowColor = colorText.GREEN
         screenDict[
-            "52Wk H"
+            "52Wk-H"
         ] = f"{highColor}{str('{:.2f}'.format(full52WeekHigh))}{colorText.END}"
         screenDict[
-            "52Wk L"
+            "52Wk-L"
         ] = f"{lowColor}{str('{:.2f}'.format(full52WeekLow))}{colorText.END}"
+        # if self.shouldLog:
+        #     self.default_logger.debug(data.head(10))
 
     # Find stocks that have broken through 52 week low.
     def find52WeekLowBreakout(self, df):
@@ -169,14 +161,11 @@ class ScreeningStatistics:
         # last1WeekLow = last1Week["Low"].min()
         # previousWeekLow = previousWeek["Low"].min()
         full52WeekLow = full52Week["Low"].min()
-        return (
-            (recent <= full52WeekLow)
-            # or (last1WeekLow <= min(full52WeekLow, last1WeekLow))
-            # or (last1WeekLow <= previousWeekLow <= min(full52WeekLow, previousWeekLow))
-        )
+        # if self.shouldLog:
+        #     self.default_logger.debug(data.head(10))
+        return recent <= full52WeekLow
 
-        # Find stocks that have broken through 52 week low.
-
+    # Find stocks that have broken through 10 days low.
     def find10DaysLowBreakout(self, df):
         if df is None or len(df) == 0:
             return False
@@ -190,12 +179,13 @@ class ScreeningStatistics:
         previousWeek = last2Week.tail(one_week)
         last1WeekLow = last1Week["Low"].min()
         previousWeekLow = previousWeek["Low"].min()
+        # if self.shouldLog:
+        #     self.default_logger.debug(data.head(10))
         return (recent <= min(previousWeekLow, last1WeekLow)) and (
             last1WeekLow <= previousWeekLow
         )
 
-        # Find stocks that have broken through 52 week low.
-
+    # Find stocks that have broken through Aroon bullish crossover.
     def findAroonBullishCrossover(self, df):
         if df is None or len(df) == 0:
             return False
@@ -208,6 +198,8 @@ class ScreeningStatistics:
         recent = aroondf.tail(1)
         up = recent[f"AROONU_{period}"].iloc[0]
         down = recent[f"AROOND_{period}"].iloc[0]
+        # if self.shouldLog:
+        #     self.default_logger.debug(data.head(10))
         return up > down
     
     def non_zero_range(self, high: pd.Series, low: pd.Series) -> pd.Series:
@@ -234,6 +226,8 @@ class ScreeningStatistics:
         mfi = mfis.tail(1).iloc[0]
         cci = ccis.tail(1).iloc[0]
         hasDeelMomentum = percentChange >= 1 and rsi>= 68 and mfi >= 68 and cci >= 110
+        # if self.shouldLog:
+        #     self.default_logger.debug(data.head(10))
         return hasDeelMomentum
     
     # Find ATR cross stocks
@@ -254,6 +248,8 @@ class ScreeningStatistics:
         atrCrossCondition = atrCross and bullishRSI and (smav7 < recent["Volume"].iloc[0])
         saveDict["ATR"] = round(atr.tail(1).iloc[0],1)
         screenDict["ATR"] = saveDict["ATR"] #(colorText.GREEN if atrCrossCondition else colorText.FAIL) + str(atr.tail(1).iloc[0]) + colorText.END
+        # if self.shouldLog:
+        #     self.default_logger.debug(data.head(10))
         return atrCrossCondition
 
     # Function to compute ATRTrailingStop
@@ -294,27 +290,107 @@ class ScreeningStatistics:
                 data.loc[i, "nLoss"],
             )
         data = self.computeBuySellSignals(data,ema_period=ema_period)
+        if data is None:
+            return False
         recent = data.tail(1)
         buy = recent["Buy"].iloc[0]
         sell = recent["Sell"].iloc[0]
         saveDict["B/S"] = "Buy" if buy else ("Sell" if sell else "NA")
         screenDict["B/S"] = ((colorText.GREEN + "Buy") if buy else ((colorText.FAIL+ "Sell") if sell else (colorText.WARN + "NA"))) + colorText.END
+        # if self.shouldLog:
+        #     self.default_logger.debug(data.head(10))
         return buy if buySellAll==1 else (sell if buySellAll == 2 else (True if buySellAll == 3 else False))
 
+    def downloadSaveTemplateJsons(self, outputFolderPath=None):
+        from PKDevTools.classes.Fetcher import fetcher
+        import os
+        if outputFolderPath is None:
+            dirName = 'templates'
+            outputFolder = os.path.join(os.getcwd(),dirName)
+        else:
+            outputFolder = outputFolderPath
+        outputFolder = f"{outputFolder}{os.sep}" if not outputFolder.endswith(f"{os.sep}") else outputFolder
+        if not os.path.isdir(outputFolder):
+            os.makedirs(outputFolder, exist_ok=True)
+        json1 = "https://raw.githubusercontent.com/polakowo/vectorbt/master/vectorbt/templates/dark.json"
+        json2 = "https://raw.githubusercontent.com/polakowo/vectorbt/master/vectorbt/templates/light.json"
+        json3 = "https://raw.githubusercontent.com/polakowo/vectorbt/master/vectorbt/templates/seaborn.json"
+        fileURLs = [json1,json2,json3]
+        fileFetcher = fetcher()
+        from PKDevTools.classes.Utils import random_user_agent
+        for url in fileURLs:
+            try:
+                path = os.path.join(outputFolder,url.split("/")[-1])
+                if not os.path.exists(path):
+                    if self.shouldLog:
+                        self.default_logger.debug(f"Fetching {url} to keep at {path}")
+                    resp = fileFetcher.fetchURL(url=url,trial=3,timeout=5,headers={'user-agent': f'{random_user_agent()}'})
+                    if resp is not None and resp.status_code == 200:
+                        with open(path, "w") as f:
+                            f.write(resp.text)
+                else:
+                    if self.shouldLog:
+                        self.default_logger.debug(f"Already exists: {path}")
+            except Exception as e:
+                if self.shouldLog:
+                    self.default_logger.debug(e, exc_info=True)
+                continue
+
     #Calculating signals
-    def computeBuySellSignals(self,df,ema_period=200):
+    def computeBuySellSignals(self,df,ema_period=200,retry=True):
         try:
-            from vectorbt.indicators import MA as vbt
-            ema = vbt.run(df["Close"], 1, short_name='EMA', ewm=True)
-            df["Above"] = ema.ma_crossed_above(df["ATRTrailingStop"])
-            df["Below"] = ema.ma_crossed_below(df["ATRTrailingStop"])
-        except ImportError:
-            ema = pktalib.EMA(df["Close"], ema_period) if ema_period > 1 else df["Close"]#short_name='EMA', ewm=True)        
-            df["Above"] = ema > df["ATRTrailingStop"]
-            df["Below"] = ema < df["ATRTrailingStop"]        
-        
-        df["Buy"] = (df["Close"] > df["ATRTrailingStop"]) & (df["Above"]==True)
-        df["Sell"] = (df["Close"] < df["ATRTrailingStop"]) & (df["Below"]==True)
+            if Imports["vectorbt"]:
+                from vectorbt.indicators import MA as vbt
+                if df is not None:
+                    ema = vbt.run(df["Close"], 1, short_name='EMA', ewm=True)
+                    df["Above"] = ema.ma_crossed_above(df["ATRTrailingStop"])
+                    df["Below"] = ema.ma_crossed_below(df["ATRTrailingStop"])
+            else:
+                OutputControls().printOutput(f"{colorText.FAIL}The main module needed for best Buy/Sell result calculation is missing. Falling back on an alternative, but it is not very reliable.{colorText.END}")
+                if self.shouldLog:
+                    self.default_logger.debug(e, exc_info=True)
+                if df is not None:
+                    ema = pktalib.EMA(df["Close"], ema_period) if ema_period > 1 else df["Close"]#short_name='EMA', ewm=True)        
+                    df["Above"] = ema > df["ATRTrailingStop"]
+                    df["Below"] = ema < df["ATRTrailingStop"]
+        except (OSError,FileNotFoundError) as e:
+            if self.shouldLog:
+                self.default_logger.debug(e, exc_info=True)
+            OutputControls().printOutput(f"{colorText.FAIL}Some dependencies are missing. Try and run this option again.{colorText.END}")
+            # OSError:RALLIS: [Errno 2] No such file or directory: '/tmp/_MEIzoTV6A/vectorbt/templates/light.json'
+            # if "No such file or directory" in str(e):
+            try:
+                import os
+                outputFolder = None
+                try:
+                    outputFolder = os.sep.join(e.filename.split(os.sep)[:-1])
+                except Exception as e:
+                    if self.shouldLog:
+                        self.default_logger.debug(e, exc_info=True)
+                    outputFolder = os.sep.join(str(e).split("\n")[0].split(": ")[1].replace("'","").split(os.sep)[:-1])
+            except Exception as e:
+                if self.shouldLog:
+                    self.default_logger.debug(e, exc_info=True)
+                pass
+            self.downloadSaveTemplateJsons(outputFolder)
+            if retry:
+                return self.computeBuySellSignals(df,ema_period=ema_period,retry=False)
+            return None
+        except ImportError as e:
+            OutputControls().printOutput(f"{colorText.FAIL}The main module needed for best Buy/Sell result calculation is missing. Falling back on an alternative, but it is not very reliable.{colorText.END}")
+            if self.shouldLog:
+                self.default_logger.debug(e, exc_info=True)
+            if df is not None:
+                ema = pktalib.EMA(df["Close"], ema_period) if ema_period > 1 else df["Close"]#short_name='EMA', ewm=True)        
+                df["Above"] = ema > df["ATRTrailingStop"]
+                df["Below"] = ema < df["ATRTrailingStop"]
+        except Exception as e:
+            if self.shouldLog:
+                self.default_logger.debug(e, exc_info=True)
+                
+        if df is not None:
+            df["Buy"] = (df["Close"] > df["ATRTrailingStop"]) & (df["Above"]==True)
+            df["Sell"] = (df["Close"] < df["ATRTrailingStop"]) & (df["Below"]==True)
 
         return df
 
@@ -2022,9 +2098,11 @@ class ScreeningStatistics:
             elif data_list[cnt] in last_signal:
                 try:
                     condition = last_signal[data_list[cnt]][0]["SL"][0]
-                except KeyError as e: # pragma: no cover
-                    self.default_logger.debug(e, exc_info=True)
-                    condition = last_signal[data_list[cnt]]["SL"][0]
+                except (KeyError,IndexError) as e: # pragma: no cover
+                    try:
+                        condition = last_signal[data_list[cnt]]["SL"][0]
+                    except (KeyError,IndexError) as e: # pragma: no cover
+                        condition = None
                 # if last_signal[data_list[cnt]] is not final:          # Debug - Shows all conditions
                 if len(final["SL"]) > 0 and condition != final["SL"].iloc[0]:
                     # Do something with results
@@ -2637,8 +2715,22 @@ class ScreeningStatistics:
                 saveDict[f"Growth{prd}"] = round(ltpTdy - prevLtp, 2)
                 if prd == 22 or (prd == requestedPeriod):
                     changePercent = round(((prevLtp-ltpTdy) if requestedPeriod ==0 else (ltpTdy - prevLtp))*100/ltpTdy, 2)
-                    saveDict[f"{prd}-Pd %"] = f"{changePercent}%" if not pd.isna(changePercent) else '-'
-                    screenDict[f"{prd}-Pd %"] = ((colorText.GREEN if changePercent >=0 else colorText.FAIL) + f"{changePercent}%" + colorText.END) if not pd.isna(changePercent) else '-'
+                    saveDict[f"{prd}-Pd"] = f"{changePercent}%" if not pd.isna(changePercent) else '-'
+                    screenDict[f"{prd}-Pd"] = ((colorText.GREEN if changePercent >=0 else colorText.FAIL) + f"{changePercent}%" + colorText.END) if not pd.isna(changePercent) else '-'
+                    if (prd == requestedPeriod):
+                        maxLTPPotential = max(data["High"].head(prd))
+                        screenDict[f"MaxLTP"] = (
+                            (colorText.GREEN if (maxLTPPotential >= prevLtp) else (colorText.FAIL))
+                            + str("{:.2f}".format(maxLTPPotential))
+                            + colorText.END
+                        )
+                        screenDict[f"Pot.Grw"] = (
+                            (colorText.GREEN if (maxLTPPotential >= prevLtp) else (colorText.FAIL))
+                            + str("{:.2f}%".format((maxLTPPotential - prevLtp)*100/prevLtp))
+                            + colorText.END
+                        )
+                        saveDict[f"MaxLTP"] = round(maxLTPPotential, 2)
+                        saveDict[f"Pot.Grw"] = f"{round((maxLTPPotential - prevLtp)*100/prevLtp, 2)}%"
                 screenDict["Date"] = calc_date
                 saveDict["Date"] = calc_date
             else:

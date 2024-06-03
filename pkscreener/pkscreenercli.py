@@ -70,6 +70,7 @@ original__stdout=None
 cron_runs=0
 
 def decorator(func):
+    # @infer_global(new_func)
     def new_func(*args, **kwargs):
         if printenabled:
             try:
@@ -266,6 +267,8 @@ if __name__ == "__main__":
         help="Piped Menus",
         required=False,
     )
+    # args = " -a Y -e -p -u 6186237493 -o X:12:30::D:D:D:D:D".split(" ")
+    # argsv = argParser.parse_known_args(args=args)
     argsv = argParser.parse_known_args()
     args = argsv[0]
     # if sys.argv[0].endswith(".py"):
@@ -374,6 +377,8 @@ def runApplication():
         savedPipedArgs = args.pipedmenus if args is not None and args.pipedmenus is not None else None
     except:
         pass
+    # args = " -a Y -e -p -u 6186237493 -o X:12:30::D:D:D:D:D".split(" ")
+    # argsv = argParser.parse_known_args(args=args)
     argsv = argParser.parse_known_args()
     args = argsv[0]
     if args.systemlaunched:
@@ -450,6 +455,7 @@ def runApplication():
             if args.monitor:
                 configManager.getConfig(ConfigManager.parser)
                 args.answerdefault = args.answerdefault or 'Y'
+                MarketMonitor().hiddenColumns = configManager.alwaysHiddenDisplayColumns
                 if MarketMonitor().monitorIndex == 0:
                     dbTimestamp = PKDateUtilities.currentDateTime().strftime("%H:%M:%S")
                     elapsed_time = 0
@@ -563,6 +569,8 @@ def checkIntradayComponent(args, monitorOption):
 
 
 def pipeResults(prevOutput,args):
+    if args is None or args.options is None:
+        return False
     nextOnes = args.options.split(">")
     hasFoundStocks = False
     if len(nextOnes) > 1:
@@ -618,112 +626,135 @@ def pkscreenercli():
                 OutputControls().printOutput(e)
                 traceback.print_exc()
             pass
+    try:
+        OutputControls(enableMultipleLineOutput=(args is None or args.monitor is None)).printOutput("",end="\r")
+        configManager.getConfig(ConfigManager.parser)
+        import atexit
+        atexit.register(exitGracefully)
+        # configManager.restartRequestsCache()
+        # args.monitor = configManager.defaultMonitorOptions
+        if args.monitor is not None:
+            MarketMonitor(monitors=args.monitor.split("~") if len(args.monitor)>5 else configManager.defaultMonitorOptions.split("~"),
+                        maxNumResultsPerRow=configManager.maxDashboardWidgetsPerRow,
+                        maxNumColsInEachResult=6,
+                        maxNumRowsInEachResult=10,
+                        maxNumResultRowsInMonitor=configManager.maxNumResultRowsInMonitor)
 
-    OutputControls(enableMultipleLineOutput=(args.monitor is None)).printOutput("",end="\r")
-    
-    configManager.getConfig(ConfigManager.parser)
-    import atexit
-    atexit.register(exitGracefully)
-    # configManager.restartRequestsCache()
-    # args.monitor = configManager.defaultMonitorOptions
-    if args.monitor is not None:
-        MarketMonitor(monitors=args.monitor.split("~") if len(args.monitor)>5 else configManager.defaultMonitorOptions.split("~"),
-                      maxNumResultsPerRow=configManager.maxDashboardWidgetsPerRow,
-                      maxNumColsInEachResult=6,
-                      maxNumRowsInEachResult=10,
-                      maxNumResultRowsInMonitor=configManager.maxNumResultRowsInMonitor)
-
-    if args.log or configManager.logsEnabled:
-        setupLogger(shouldLog=True, trace=args.testbuild)
-        if not args.prodbuild and args.answerdefault is None:
-            input("Press <Enter> to continue...")
-    else:
-        if "PKDevTools_Default_Log_Level" in os.environ.keys():
-            del os.environ['PKDevTools_Default_Log_Level']
-            # os.environ["PKDevTools_Default_Log_Level"] = str(log.logging.NOTSET)
-    if args.simulate:
-        os.environ["simulation"] = json.dumps(args.simulate)
-    elif "simulation" in os.environ.keys():
-        del os.environ['simulation']
-    # Import other dependency here because if we import them at the top
-    # multiprocessing behaves in unpredictable ways
-    import pkscreener.classes.Utility as Utility
-
-    configManager.default_logger = default_logger()
-    if originalStdOut is None:
-        # Clear only if this is the first time it's being called from some
-        # loop within workflowtriggers.
-        Utility.tools.clearScreen(userArgs=args, clearAlways=True)
-    warnAboutDependencies()
-    if args.prodbuild:
-        disableSysOut()
-
-    if not configManager.checkConfigFile():
-        configManager.setConfig(
-            ConfigManager.parser, default=True, showFileCreatedText=False
-        )
-    if args.systemlaunched:
-        args.systemlaunched = args.options
-        
-    if args.telegram:
-        # Launched by bot for intraday monitor?
-        if (PKDateUtilities.isTradingTime() and not PKDateUtilities.isTodayHoliday()[0]) or ("PKDevTools_Default_Log_Level" in os.environ.keys()):
-            from PKDevTools.classes import Archiver
-            filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs_1.txt")
-            if os.path.exists(filePath):
-                default_logger().info("monitor_outputs_1.txt already exists! This means an instance may already be running. Exiting now...")
-                # Since the file exists, it means, there is another instance running
-                sys.exit(0)
+        if args.log or configManager.logsEnabled:
+            setupLogger(shouldLog=True, trace=args.testbuild)
+            if not args.prodbuild and args.answerdefault is None:
+                input("Press <Enter> to continue...")
         else:
-            # It should have been launched only during the trading hours
-            default_logger().info("--telegram option must be launched ONLY during NSE trading hours. Exiting now...")
+            if "PKDevTools_Default_Log_Level" in os.environ.keys():
+                del os.environ['PKDevTools_Default_Log_Level']
+                # os.environ["PKDevTools_Default_Log_Level"] = str(log.logging.NOTSET)
+        if args.simulate:
+            os.environ["simulation"] = json.dumps(args.simulate)
+        elif "simulation" in os.environ.keys():
+            del os.environ['simulation']
+        # Import other dependency here because if we import them at the top
+        # multiprocessing behaves in unpredictable ways
+        import pkscreener.classes.Utility as Utility
+
+        configManager.default_logger = default_logger()
+        if originalStdOut is None:
+            # Clear only if this is the first time it's being called from some
+            # loop within workflowtriggers.
+            Utility.tools.clearScreen(userArgs=args, clearAlways=True)
+        warnAboutDependencies()
+        if args.prodbuild:
+            if args.options and len(args.options.split(":")) > 0:
+                indexOption = 0
+                doNotDisableGlobalPrint = False
+                while indexOption <= 15: # Max integer menu index in level1_X_MenuDict in MenuOptions.py
+                    # Menu option 30 is for ATR trailing stops which uses vectorbt
+                    # which in turn uses numba which requires print function to be inferred globally
+                    # If we try to override print with new_func, it expects this new_func
+                    # to be globally available. So to avoid these changes, let's just skip
+                    # prodmode for menu option 30
+                    doNotDisableGlobalPrint = f":{indexOption}:30:" in args.options
+                    if doNotDisableGlobalPrint:
+                        break
+                    indexOption += 1
+                if not doNotDisableGlobalPrint:
+                    disableSysOut()
+            else:
+                disableSysOut()
+
+        if not configManager.checkConfigFile():
+            configManager.setConfig(
+                ConfigManager.parser, default=True, showFileCreatedText=False
+            )
+        if args.systemlaunched:
+            args.systemlaunched = args.options
+            
+        if args.telegram:
+            # Launched by bot for intraday monitor?
+            if (PKDateUtilities.isTradingTime() and not PKDateUtilities.isTodayHoliday()[0]) or ("PKDevTools_Default_Log_Level" in os.environ.keys()):
+                from PKDevTools.classes import Archiver
+                filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs_1.txt")
+                if os.path.exists(filePath):
+                    default_logger().info("monitor_outputs_1.txt already exists! This means an instance may already be running. Exiting now...")
+                    # Since the file exists, it means, there is another instance running
+                    sys.exit(0)
+            else:
+                # It should have been launched only during the trading hours
+                default_logger().info("--telegram option must be launched ONLY during NSE trading hours. Exiting now...")
+                sys.exit(0)
+        # Check and see if we're running only the telegram bot
+        if args.bot:
+            from pkscreener import pkscreenerbot
+            pkscreenerbot.runpkscreenerbot(availability=args.botavailable)
+            return
+        
+        if args.intraday:
+            configManager.toggleConfig(candleDuration=args.intraday, clearCache=False)
+        else:
+            configManager.toggleConfig(candleDuration='1d', clearCache=False)
+        if args.options is not None:
+            if str(args.options) == "0":
+                # Must be from unit tests to be able to break out of loops via eventing
+                args.options = None
+            args.options = args.options.replace("::",":")
+        
+        if args.maxprice:
+            configManager.maxLTP = args.maxprice
+            configManager.setConfig(ConfigManager.parser, default=True, showFileCreatedText=False)
+        if args.minprice:
+            configManager.minLTP = args.minprice
+            configManager.setConfig(ConfigManager.parser, default=True, showFileCreatedText=False)
+        if args.testbuild and not args.prodbuild:
+            OutputControls().printOutput(
+                colorText.BOLD
+                + colorText.FAIL
+                + "[+] Started in TestBuild mode!"
+                + colorText.END
+            )
+            runApplication()
+        elif args.download:
+            OutputControls().printOutput(
+                colorText.BOLD
+                + colorText.FAIL
+                + "[+] Download ONLY mode! Stocks will not be screened!"
+                + colorText.END
+            )
+            if args.intraday is None:
+                configManager.toggleConfig(candleDuration="1d", clearCache=False)
+            runApplication()
+            from pkscreener.globals import closeWorkersAndExit
+            closeWorkersAndExit()
+            exitGracefully()
             sys.exit(0)
-    # Check and see if we're running only the telegram bot
-    if args.bot:
-        from pkscreener import pkscreenerbot
-        pkscreenerbot.runpkscreenerbot(availability=args.botavailable)
-        return
-    
-    if args.intraday:
-        configManager.toggleConfig(candleDuration=args.intraday, clearCache=False)
-    else:
-        configManager.toggleConfig(candleDuration='1d', clearCache=False)
-    if args.options is not None:
-        if str(args.options) == "0":
-            # Must be from unit tests to be able to break out of loops via eventing
-            args.options = None
-        args.options = args.options.replace("::",":")
-    
-    if args.maxprice:
-        configManager.maxLTP = args.maxprice
-        configManager.setConfig(ConfigManager.parser, default=True, showFileCreatedText=False)
-    if args.minprice:
-        configManager.minLTP = args.minprice
-        configManager.setConfig(ConfigManager.parser, default=True, showFileCreatedText=False)
-    if args.testbuild and not args.prodbuild:
-        OutputControls().printOutput(
-            colorText.BOLD
-            + colorText.FAIL
-            + "[+] Started in TestBuild mode!"
-            + colorText.END
-        )
-        runApplication()
-    elif args.download:
-        OutputControls().printOutput(
-            colorText.BOLD
-            + colorText.FAIL
-            + "[+] Download ONLY mode! Stocks will not be screened!"
-            + colorText.END
-        )
-        if args.intraday is None:
-            configManager.toggleConfig(candleDuration="1d", clearCache=False)
-        runApplication()
-        from pkscreener.globals import closeWorkersAndExit
-        closeWorkersAndExit()
-        exitGracefully()
-        sys.exit(0)
-    else:
-        runApplicationForScreening()
+        else:
+            runApplicationForScreening()
+    except Exception as e:
+        if "RUNNER" not in os.environ.keys() and ('PKDevTools_Default_Log_Level' in os.environ.keys() and os.environ["PKDevTools_Default_Log_Level"] != str(log.logging.NOTSET)):
+                OutputControls().printOutput(
+                    "[+] RuntimeError with 'multiprocessing'.\n[+] Please contact the Developer, if this does not work!"
+                )
+                OutputControls().printOutput(e)
+                traceback.print_exc()
+        pass
 
 def runLoopOnScheduleOrStdApplication(hasCronInterval):
     if hasCronInterval:

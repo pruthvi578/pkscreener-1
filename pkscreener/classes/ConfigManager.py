@@ -45,6 +45,7 @@ default_timeout = 2
 class tools(SingletonMixin, metaclass=SingletonType):
     def __init__(self):
         super(tools, self).__init__()
+        self.alwaysHiddenDisplayColumns = ",52Wk-L,RSI,22-Pd,Consol.,Pattern,CCI,Trend(22Prds)"
         self.consolidationPercentage = 10
         self.volumeRatio = 2.5
         self.minLTP = 20.0
@@ -62,6 +63,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
         self.defaultIndex = 12
         self.longTimeout = 4
         self.maxNetworkRetryCount = 10
+        self.maxdisplayresults = 100
         self.backtestPeriod = 120
         self.maxBacktestWindow = 30
         self.minVolume = 10000
@@ -69,6 +71,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
         self.morninganalysiscandleduration = '1m'
         self.logger = None
         self.showPastStrategyData = False
+        self.showPinnedMenuEvenForNoResult = True
         self.atrTrailingStopSensitivity = 1
         self.atrTrailingStopPeriod = 10
         self.atrTrailingStopEMAPeriod = 200
@@ -145,6 +148,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 pass
             parser.add_section("config")
             parser.add_section("filters")
+            parser.set("config", "alwaysHiddenDisplayColumns", str(self.alwaysHiddenDisplayColumns))
             parser.set("config", "atrtrailingstopemaperiod", str(self.atrTrailingStopEMAPeriod))
             parser.set("config", "atrtrailingstopperiod", str(self.atrTrailingStopPeriod))
             parser.set("config", "atrtrailingstopsensitivity", str(self.atrTrailingStopSensitivity))
@@ -162,6 +166,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
             parser.set("config", "longTimeout", str(self.longTimeout))
             parser.set("config", "maxBacktestWindow", str(self.maxBacktestWindow))
             parser.set("config", "maxDashboardWidgetsPerRow", str(self.maxDashboardWidgetsPerRow))
+            parser.set("config", "maxdisplayresults", str(self.maxdisplayresults))
             parser.set("config", "maxNetworkRetryCount", str(self.maxNetworkRetryCount))
             parser.set("config", "maxNumResultRowsInMonitor", str(self.maxNumResultRowsInMonitor))
             parser.set("config", "morninganalysiscandlenumber", str(self.morninganalysiscandlenumber))
@@ -169,6 +174,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
             parser.set("config", "onlyStageTwoStocks", "y" if self.stageTwo else "n")
             parser.set("config", "period", self.period)
             parser.set("config", "showPastStrategyData", "y" if self.showPastStrategyData else "n")
+            parser.set("config", "showPinnedMenuEvenForNoResult", "y" if self.showPinnedMenuEvenForNoResult else "n")
             parser.set("config", "showunknowntrends", "y" if self.showunknowntrends else "n")
             parser.set("config", "shuffle", "y" if self.shuffleEnabled else "n")
             parser.set("config", "useEMA", "y" if self.useEMA else "n")
@@ -277,6 +283,11 @@ class tools(SingletonMixin, metaclass=SingletonType):
                         f"[+] Enable showing past strategy data? [Y/N, Current: {colorText.FAIL}{'y' if self.showPastStrategyData else 'n'}{colorText.END}]: "
                     ) or ('y' if self.showPastStrategyData else 'n')
                 ).lower()
+                self.showPinnedMenuEvenForNoResult = str(
+                    input(
+                        f"[+] Enable showing pinned menu even when there is no result? [Y/N, Current: {colorText.FAIL}{'y' if self.showPinnedMenuEvenForNoResult else 'n'}{colorText.END}]: "
+                    ) or ('y' if self.showPinnedMenuEvenForNoResult else 'n')
+                ).lower()
                 self.calculatersiintraday = str(
                     input(
                         f"[+] Calculate intraday RSI during trading hours? [Y/N, Current: {colorText.FAIL}{'y' if self.calculatersiintraday else 'n'}{colorText.END}]: "
@@ -288,6 +299,9 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 self.longTimeout = input(
                     f"[+] Long network timeout for heavier downloads(in seconds)(Optimal = 4 for good networks, Current: {colorText.FAIL}{self.longTimeout}{colorText.END}): "
                 ) or self.longTimeout
+                self.maxdisplayresults = input(
+                    f"[+] Maximum number of display results(number)(Optimal = 100, Current: {colorText.FAIL}{self.maxdisplayresults}{colorText.END}): "
+                ) or self.maxdisplayresults
                 self.maxNetworkRetryCount = input(
                     f"[+] Maximum number of retries in case of network timeout(in seconds)(Optimal = 10 for slow networks, Current: {colorText.FAIL}{self.maxNetworkRetryCount}{colorText.END}): "
                 ) or self.maxNetworkRetryCount
@@ -334,6 +348,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 sleep(3)
                 pass
             try:
+                parser.set("config", "alwaysHiddenDisplayColumns", str(self.alwaysHiddenDisplayColumns))
                 parser.set("config", "atrtrailingstopemaperiod", str(self.atrTrailingStopEMAPeriod))
                 parser.set("config", "atrtrailingstopperiod", str(self.atrTrailingStopPeriod))
                 parser.set("config", "atrtrailingstopsensitivity", str(self.atrTrailingStopSensitivity))
@@ -354,6 +369,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 parser.set("config", "longTimeout", str(self.longTimeout))
                 parser.set("config", "maxBacktestWindow", str(self.maxBacktestWindow))
                 parser.set("config", "maxDashboardWidgetsPerRow", str(self.maxDashboardWidgetsPerRow))
+                parser.set("config", "maxdisplayresults", str(self.maxdisplayresults))
                 parser.set("config", "maxNetworkRetryCount", str(self.maxNetworkRetryCount))
                 parser.set("config", "maxNumResultRowsInMonitor", str(self.maxNumResultRowsInMonitor))
                 if self.morninganalysiscandleduration:
@@ -367,6 +383,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
                     endPeriod = "d" if endPeriod not in ["d","o","y","x"] else ""
                 parser.set("config", "period", str(self.period + endPeriod))
                 parser.set("config", "showPastStrategyData", str(self.showPastStrategyData))
+                parser.set("config", "showPinnedMenuEvenForNoResult", str(self.showPinnedMenuEvenForNoResult))
                 parser.set("config", "showunknowntrends", str(self.showunknowntrendsPrompt))
                 parser.set("config", "shuffle", str(self.shuffle))
                 parser.set("config", "useEMA", str(self.useEmaPrompt))
@@ -423,6 +440,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
     def getConfig(self, parser):
         if len(parser.read("pkscreener.ini")):
             try:
+                self.alwaysHiddenDisplayColumns = parser.get("config", "alwaysHiddenDisplayColumns")
                 self.duration = parser.get("config", "duration")
                 self.period = parser.get("config", "period")
                 self.minLTP = float(parser.get("filters", "minprice"))
@@ -473,6 +491,11 @@ class tools(SingletonMixin, metaclass=SingletonType):
                     if "y" not in str(parser.get("config", "showPastStrategyData")).lower()
                     else True
                 )
+                self.showPinnedMenuEvenForNoResult = (
+                    False
+                    if "y" not in str(parser.get("config", "showPinnedMenuEvenForNoResult")).lower()
+                    else True
+                )
                 self.calculatersiintraday = (
                     False
                     if "y" not in str(parser.get("config", "calculatersiintraday")).lower()
@@ -484,9 +507,8 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 self.generalTimeout = float(parser.get("config", "generalTimeout"))
                 self.defaultIndex = int(parser.get("config", "defaultIndex"))
                 self.longTimeout = float(parser.get("config", "longTimeout"))
-                self.maxNetworkRetryCount = int(
-                    parser.get("config", "maxNetworkRetryCount")
-                )
+                self.maxdisplayresults = int(parser.get("config", "maxdisplayresults"))
+                self.maxNetworkRetryCount = int(parser.get("config", "maxNetworkRetryCount"))
                 self.backtestPeriod = int(parser.get("config", "backtestPeriod"))
                 self.maxBacktestWindow = int(parser.get("config", "maxBacktestWindow"))
                 self.morninganalysiscandlenumber = int(parser.get("config", "morninganalysiscandlenumber"))
