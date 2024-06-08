@@ -244,6 +244,11 @@ if __name__ == "__main__":
         required=False,
     )
     argParser.add_argument(
+        "--triggertimestamp",
+        help="Optionally, send the timestamp value when this was triggered",
+        required=False,
+    )
+    argParser.add_argument(
         "-u",
         "--user",
         help="Telegram user ID to whom the results must be sent.",
@@ -285,7 +290,13 @@ if __name__ == "__main__":
 def exitGracefully():
     from PKDevTools.classes import Archiver
     from pkscreener.globals import resetConfigToDefault
-    filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs")
+    filePath = None
+    try:
+        filePath = os.path.join(Archiver.get_user_outputs_dir(), "monitor_outputs")
+    except:
+        pass
+    if filePath is None:
+        return
     index = 0
     while index < configManager.maxDashboardWidgetsPerRow*configManager.maxNumResultRowsInMonitor:
         try:
@@ -381,6 +392,10 @@ def runApplication():
     # argsv = argParser.parse_known_args(args=args)
     argsv = argParser.parse_known_args()
     args = argsv[0]
+    if args.triggertimestamp is None:
+        args.triggertimestamp = int(PKDateUtilities.currentDateTimestamp())
+    else:
+        args.triggertimestamp = int(args.triggertimestamp)
     if args.systemlaunched:
         args.systemlaunched = args.options
     
@@ -389,7 +404,7 @@ def runApplication():
     #     args.answerdefault = 'Y'
     args.pipedmenus = savedPipedArgs
     if args.options is not None:
-        args.options = args.options.replace("::",":")
+        args.options = args.options.replace("::",":").replace("\"","").replace("'","")
     if args.runintradayanalysis:
         from pkscreener.classes.MenuOptions import menus
         runOptions = menus.allMenus(topLevel="C", index=12)
@@ -453,6 +468,7 @@ def runApplication():
             monitorOption_org = ""
             # args.monitor = configManager.defaultMonitorOptions
             if args.monitor:
+                args.monitor = args.monitor.replace("::",":").replace("\"","").replace("'","")
                 configManager.getConfig(ConfigManager.parser)
                 args.answerdefault = args.answerdefault or 'Y'
                 MarketMonitor().hiddenColumns = configManager.alwaysHiddenDisplayColumns
@@ -465,7 +481,7 @@ def runApplication():
                         elapsed_time = round(time.time() - start_time,2)
                         start_time = time.time()
                 monitorOption_org = MarketMonitor().currentMonitorOption()
-                monitorOption = monitorOption_org
+                monitorOption = monitorOption_org.replace("::",":").replace("\"","").replace("'","")
                 monitorOption = checkIntradayComponent(args, monitorOption)
                 if monitorOption.startswith("|"):
                     monitorOption = monitorOption[1:]
@@ -495,8 +511,9 @@ def runApplication():
                         resultStocks = ",".join(resultStocks)
                         monitorOption = f"{monitorOption}:{resultStocks}"
                 args.options = monitorOption.replace("::",":")
-                # (previousCandleDuration != configManager.duration) or 
-                if (MarketMonitor().monitorIndex == 1 and args.options is not None and plainResults is not None):
+                fullMonitorMode = MarketMonitor().monitorIndex == 1 and args.options is not None and plainResults is not None
+                partMonitorMode = len(MarketMonitor().monitors) == 1 and args.options is not None and plainResults is not None
+                if (fullMonitorMode or partMonitorMode):
                     # Load the stock data afresh for each cycle
                     refreshStockData(args.options)
             try:
@@ -532,6 +549,8 @@ def runApplication():
                 sys.exit(0)
             except Exception as e:
                 default_logger().debug(e, exc_info=True)
+                if args.log:
+                    traceback.print_exc()
                 # Probably user cancelled an operation by choosing a cancel sub-menu somewhere
                 pass
             if plainResults is not None and not plainResults.empty:
@@ -631,6 +650,11 @@ def pkscreenercli():
         configManager.getConfig(ConfigManager.parser)
         import atexit
         atexit.register(exitGracefully)
+        # Set the trigger timestamp
+        if args.triggertimestamp is None:
+            args.triggertimestamp = int(PKDateUtilities.currentDateTimestamp())
+        else:
+            args.triggertimestamp = int(args.triggertimestamp)
         # configManager.restartRequestsCache()
         # args.monitor = configManager.defaultMonitorOptions
         if args.monitor is not None:
@@ -638,7 +662,9 @@ def pkscreenercli():
                         maxNumResultsPerRow=configManager.maxDashboardWidgetsPerRow,
                         maxNumColsInEachResult=6,
                         maxNumRowsInEachResult=10,
-                        maxNumResultRowsInMonitor=configManager.maxNumResultRowsInMonitor)
+                        maxNumResultRowsInMonitor=configManager.maxNumResultRowsInMonitor,
+                        pinnedIntervalWaitSeconds=configManager.pinnedMonitorSleepIntervalSeconds,
+                        alertOptions=configManager.soundAlertForMonitorOptions.split("~"))
 
         if args.log or configManager.logsEnabled:
             setupLogger(shouldLog=True, trace=args.testbuild)

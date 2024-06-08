@@ -50,6 +50,7 @@ if Imports["scipy"]:
 from PKDevTools.classes.ColorText import colorText
 from PKDevTools.classes.PKDateUtilities import PKDateUtilities
 from PKDevTools.classes.SuppressOutput import SuppressOutput
+from PKDevTools.classes.MarketHours import MarketHours
 # from PKDevTools.classes.log import measure_time
 
 # Exception for only downloading stock data and not screening
@@ -1439,10 +1440,10 @@ class ScreeningStatistics:
         diff_df = None
         try:
             # Let's only consider those candles that are after the alert issue-time in the mornings + 2 candles (for buy/sell)
-            diff_df = data[data.index >=  pd.to_datetime(f'{PKDateUtilities.tradingDate().strftime(f"%Y-%m-%d")} 09:{15+self.configManager.morninganalysiscandlenumber + 2}:00+05:30').to_datetime64()]
+            diff_df = data[data.index >=  pd.to_datetime(f'{PKDateUtilities.tradingDate().strftime(f"%Y-%m-%d")} {MarketHours().openHour:02}:{MarketHours().openMinute+self.configManager.morninganalysiscandlenumber + 2}:00+05:30').to_datetime64()]
             # brokerSqrOfftime = pd.to_datetime(f'{PKDateUtilities.tradingDate().strftime(f"%Y-%m-%d")} 15:14:00+05:30').to_datetime64()
         except:
-            diff_df = data[data.index >=  pd.to_datetime(f'{PKDateUtilities.tradingDate().strftime(f"%Y-%m-%d")} 09:{15+self.configManager.morninganalysiscandlenumber + 2}:00+05:30', utc=True)]
+            diff_df = data[data.index >=  pd.to_datetime(f'{PKDateUtilities.tradingDate().strftime(f"%Y-%m-%d")} {MarketHours().openHour:02}:{MarketHours().openMinute+self.configManager.morninganalysiscandlenumber + 2}:00+05:30', utc=True)]
             # brokerSqrOfftime = pd.to_datetime(f'{PKDateUtilities.tradingDate().strftime(f"%Y-%m-%d")} 15:14:00+05:30', utc=True)
             pass
         dayHighAfterAlert = diff_df["High"].max()
@@ -1471,10 +1472,10 @@ class ScreeningStatistics:
         # brokerSqrOfftime = None
         try:
             # Let's only consider those candles that are after the alert issue-time in the mornings + 2 candles (for buy/sell)
-            diff_df = diff_df[diff_df.index >=  pd.to_datetime(f'{PKDateUtilities.tradingDate().strftime(f"%Y-%m-%d")} 09:{15+self.configManager.morninganalysiscandlenumber + 2}:00+05:30').to_datetime64()]
+            diff_df = diff_df[diff_df.index >=  pd.to_datetime(f'{PKDateUtilities.tradingDate().strftime(f"%Y-%m-%d")} {MarketHours().openHour:02}:{MarketHours().openMinute+self.configManager.morninganalysiscandlenumber + 2}:00+05:30').to_datetime64()]
             # brokerSqrOfftime = pd.to_datetime(f'{PKDateUtilities.tradingDate().strftime(f"%Y-%m-%d")} 15:14:00+05:30').to_datetime64()
         except:
-            diff_df = diff_df[diff_df.index >=  pd.to_datetime(f'{PKDateUtilities.tradingDate().strftime(f"%Y-%m-%d")} 09:{15+self.configManager.morninganalysiscandlenumber + 2}:00+05:30', utc=True)]
+            diff_df = diff_df[diff_df.index >=  pd.to_datetime(f'{PKDateUtilities.tradingDate().strftime(f"%Y-%m-%d")} {MarketHours().openHour:02}:{MarketHours().openMinute+self.configManager.morninganalysiscandlenumber + 2}:00+05:30', utc=True)]
             # brokerSqrOfftime = pd.to_datetime(f'{PKDateUtilities.tradingDate().strftime(f"%Y-%m-%d")} 15:14:00+05:30', utc=True)
             pass
         index = len(diff_df)
@@ -1689,7 +1690,7 @@ class ScreeningStatistics:
         return False
 
     # @measure_time
-    def findUptrend(self, df, screenDict, saveDict, testing, stock,onlyMF=False,hostData=None,exchangeName="INDIA",refreshMFAndFV=True):
+    def findUptrend(self, df, screenDict, saveDict, testing, stock,onlyMF=False,hostData=None,exchangeName="INDIA",refreshMFAndFV=True,downloadOnly=False):
         # shouldProceed = True
         isUptrend = False
         isDowntrend = False
@@ -1736,7 +1737,7 @@ class ScreeningStatistics:
         mfs = ""
         if refreshMFAndFV:
             try:
-                mf_inst_ownershipChange = self.getMutualFundStatus(stock,onlyMF=onlyMF,hostData=hostData,force=(hostData is None or hostData.empty or not ("MF" in hostData.columns or "FII" in hostData.columns)),exchangeName=exchangeName)
+                mf_inst_ownershipChange = self.getMutualFundStatus(stock,onlyMF=onlyMF,hostData=hostData,force=(hostData is None or hostData.empty or not ("MF" in hostData.columns or "FII" in hostData.columns)) and downloadOnly,exchangeName=exchangeName)
                 if isinstance(mf_inst_ownershipChange, pd.Series):
                     mf_inst_ownershipChange = 0
                 roundOff = 2
@@ -1750,7 +1751,7 @@ class ScreeningStatistics:
                 pass
             try:
                 #Let's get the fair value, either saved or fresh from service
-                fairValue = self.getFairValue(stock,hostData,force=(hostData is None or hostData.empty or "FairValue" not in hostData.columns),exchangeName=exchangeName)
+                fairValue = self.getFairValue(stock,hostData,force=(hostData is None or hostData.empty or "FairValue" not in hostData.columns) and downloadOnly,exchangeName=exchangeName)
                 if fairValue is not None and fairValue != 0:
                     ltp = saveDict["LTP"]
                     fairValueDiff = round(fairValue - ltp,0)

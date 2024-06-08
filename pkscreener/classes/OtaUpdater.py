@@ -221,22 +221,12 @@ rm updater.sh
                     pass
                 if action is not None and action.lower() == "y":
                     if inContainer:
-                        tarball_url = resp.json()["tarball_url"]
-                        tarName = tarball_url.split('/')[-1]
-                        extension = ".tar.gz"
-                        tarball_url = f"https://github.com/pkjmesra/PKScreener/archive/refs/tags/{tarName}{extension}"
-                        os.system(f"cd / && rm -rf /PKScreener-main && wget {tarball_url} && tar -xzf {tarName}{extension} && rm -rf {tarName}{extension} && mv PKScreener-{tarName} /PKScreener-main")
-                        launcher = f'"{sys.argv[0]}"' if " " in sys.argv[0] else sys.argv[0]
-                        launcher = f"python3.11 {launcher}" if (launcher.endswith(".py\"") or launcher.endswith(".py")) else launcher
                         OutputControls().printOutput(
-                                colorText.BOLD
-                                + colorText.WARN
-                                + "[+] Please press enter to relaunch!..."
-                                + colorText.END
+                                colorText.WARN
+                                + f"[+] You are running in docker. Please use\n[+]{colorText.END} {colorText.GREEN}docker pull pkjmesra/pkscreener:latest{colorText.END} {colorText.WARN}to pull the latest image, followed by\n[+]{colorText.END} {colorText.GREEN}docker run -it pkjmesra/pkscreener:latest{colorText.END} {colorText.WARN}to run in the container.{colorText.END}"
                             )
                         from time import sleep
-                        sleep(3)
-                        os.system(f"{launcher}")
+                        sleep(5)
                         sys.exit(0)
                     else:
                         try:

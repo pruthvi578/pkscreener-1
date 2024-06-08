@@ -33,6 +33,7 @@ from PKDevTools.classes.ColorText import colorText
 from PKDevTools.classes.log import default_logger
 from PKDevTools.classes.Singleton import SingletonType, SingletonMixin
 from PKDevTools.classes.OutputControls import OutputControls
+from PKDevTools.classes.MarketHours import MarketHours
 parser = configparser.ConfigParser(strict=False)
 
 # Default attributes for Downloading Cache from Git repo
@@ -47,6 +48,9 @@ class tools(SingletonMixin, metaclass=SingletonType):
         super(tools, self).__init__()
         self.alwaysHiddenDisplayColumns = ",52Wk-L,RSI,22-Pd,Consol.,Pattern,CCI,Trend(22Prds)"
         self.consolidationPercentage = 10
+        self.telegramImageFormat = "JPEG"
+        self.telegramImageCompressionRatio = 0.6
+        self.telegramImageQualityPercentage = 20
         self.volumeRatio = 2.5
         self.minLTP = 20.0
         self.maxLTP = 50000
@@ -65,10 +69,14 @@ class tools(SingletonMixin, metaclass=SingletonType):
         self.maxNetworkRetryCount = 10
         self.maxdisplayresults = 100
         self.backtestPeriod = 120
+        self.marketOpen = "09:15"
+        self.marketClose = "15:30"
         self.maxBacktestWindow = 30
         self.minVolume = 10000
+        self.soundAlertForMonitorOptions = "|{5}X:0:5:0:35:~X:12:7:4:>|X:12:30:1:~"
         self.morninganalysiscandlenumber = 25 # 9:40am IST, since market opens at 9:15am IST
         self.morninganalysiscandleduration = '1m'
+        self.pinnedMonitorSleepIntervalSeconds = 5
         self.logger = None
         self.showPastStrategyData = False
         self.showPinnedMenuEvenForNoResult = True
@@ -83,12 +91,14 @@ class tools(SingletonMixin, metaclass=SingletonType):
         self.maxDashboardWidgetsPerRow = 7
         self.maxNumResultRowsInMonitor = 3
         self.calculatersiintraday = False
-        self.defaultMonitorOptions = "X:12:9:2.5~X:12:23~X:12:28~X:12:31~|{1}X:0:23:>|X:0:27:>|X:0:31:~|{2}X:0:31:~|{3}X:0:27:~X:12:7:3:.01:1~|{5}X:0:5:0:35:~X:12:7:6:1~X:12:11:~X:12:12:i 5m~X:12:17~X:12:24~X:12:6:7:1~X:12:6:3~X:12:6:8~X:12:6:9~X:12:2:>|X:12:7:8:>|X:12:7:9:1:1:~X:12:6:10:1~X:12:7:3:.02:1~X:12:13:i 1m~X:12:2~|{1}X:0:29:"
+        self.defaultMonitorOptions = "X:12:9:2.5~X:12:23~X:12:28~X:12:31~|{1}X:0:23:>|X:0:27:>|X:0:31:~|{2}X:0:31:~|{3}X:0:27:~X:12:7:3:.01:1~|{5}X:0:5:0:35:~X:12:7:6:1~X:12:11:~X:12:12:i 5m~X:12:17~X:12:24~X:12:6:7:1~X:12:6:3~X:12:6:8~X:12:6:9~X:12:2:>|X:12:7:8:>|X:12:7:9:1:1:~X:12:6:10:1~X:12:7:4:>|X:12:30:1:~X:12:7:3:.02:1~X:12:13:i 1m~X:12:2~|{1}X:0:29:"
         self.minimumChangePercentage = 0
         self.daysToLookback = 22 * self.backtestPeriodFactor  # 1 month
         self.periods = [1,2,3,4,5,10,15,22,30]
         if self.maxBacktestWindow > self.periods[-1]:
             self.periods.extend(self.maxBacktestWindow)
+        MarketHours().setMarketOpenHourMinute(self.marketOpen)
+        MarketHours().setMarketCloseHourMinute(self.marketClose)
 
     @property
     def periodsRange(self):
@@ -164,6 +174,8 @@ class tools(SingletonMixin, metaclass=SingletonType):
             parser.set("config", "generalTimeout", str(self.generalTimeout))
             parser.set("config", "logsEnabled", "y" if (self.logsEnabled or "PKDevTools_Default_Log_Level" in os.environ.keys()) else "n")
             parser.set("config", "longTimeout", str(self.longTimeout))
+            parser.set("config", "marketOpen", str(self.marketOpen))
+            parser.set("config", "marketClose", str(self.marketClose))
             parser.set("config", "maxBacktestWindow", str(self.maxBacktestWindow))
             parser.set("config", "maxDashboardWidgetsPerRow", str(self.maxDashboardWidgetsPerRow))
             parser.set("config", "maxdisplayresults", str(self.maxdisplayresults))
@@ -173,10 +185,15 @@ class tools(SingletonMixin, metaclass=SingletonType):
             parser.set("config", "morninganalysiscandleduration", self.morninganalysiscandleduration)
             parser.set("config", "onlyStageTwoStocks", "y" if self.stageTwo else "n")
             parser.set("config", "period", self.period)
+            parser.set("config", "pinnedMonitorSleepIntervalSeconds", str(self.pinnedMonitorSleepIntervalSeconds))
             parser.set("config", "showPastStrategyData", "y" if self.showPastStrategyData else "n")
             parser.set("config", "showPinnedMenuEvenForNoResult", "y" if self.showPinnedMenuEvenForNoResult else "n")
             parser.set("config", "showunknowntrends", "y" if self.showunknowntrends else "n")
             parser.set("config", "shuffle", "y" if self.shuffleEnabled else "n")
+            parser.set("config", "soundAlertForMonitorOptions", str(self.soundAlertForMonitorOptions))
+            parser.set("config", "telegramImageCompressionRatio", str(self.telegramImageCompressionRatio))
+            parser.set("config", "telegramImageFormat", str(self.telegramImageFormat))
+            parser.set("config", "telegramImageQualityPercentage", str(self.telegramImageQualityPercentage))
             parser.set("config", "useEMA", "y" if self.useEMA else "n")
             parser.set("config", "vcpVolumeContractionRatio", str(self.vcpVolumeContractionRatio))
 
@@ -255,7 +272,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 ).lower()
                 self.stageTwoPrompt = str(
                     input(
-                        f"[+] Screen only for Stage-2 stocks?\n(What are the stages? => https://www.investopedia.com/articles/trading/08/stock-cycle-trend-price.asp)\n(Y/N, Current: {colorText.FAIL}{'y' if self.stageTwo else 'n'}{colorText.END}): "
+                        f"[+] Screen only for Stage-2 stocks?\n     (What are the stages? => https://www.investopedia.com/articles/trading/08/stock-cycle-trend-price.asp)\n     (Y/N, Current: {colorText.FAIL}{'y' if self.stageTwo else 'n'}{colorText.END}): "
                     ) or ('y' if self.stageTwo else 'n')
                 ).lower()
                 self.useEmaPrompt = str(
@@ -299,6 +316,12 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 self.longTimeout = input(
                     f"[+] Long network timeout for heavier downloads(in seconds)(Optimal = 4 for good networks, Current: {colorText.FAIL}{self.longTimeout}{colorText.END}): "
                 ) or self.longTimeout
+                self.marketOpen = input(
+                    f"[+] Market Open time(Optimal = 09:15, Current: {colorText.FAIL}{self.marketOpen}{colorText.END}): "
+                ) or self.marketOpen
+                self.marketClose = input(
+                    f"[+] Market Close time(Optimal = 15:30, Current: {colorText.FAIL}{self.marketClose}{colorText.END}): "
+                ) or self.marketClose
                 self.maxdisplayresults = input(
                     f"[+] Maximum number of display results(number)(Optimal = 100, Current: {colorText.FAIL}{self.maxdisplayresults}{colorText.END}): "
                 ) or self.maxdisplayresults
@@ -323,6 +346,9 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 self.minVolume = input(
                     f"[+] Minimum per day traded volume of any stock (number)(Optimal = 100000, Current: {colorText.FAIL}{self.minVolume}{colorText.END}): "
                 ) or self.minVolume
+                self.pinnedMonitorSleepIntervalSeconds = input(
+                    f"[+] Minimum number of seconds to wait before refreshing the data again when in pinned monitor mode (seconds)(Optimal = 30, Current: {colorText.FAIL}{self.pinnedMonitorSleepIntervalSeconds}{colorText.END}): "
+                ) or self.pinnedMonitorSleepIntervalSeconds
                 self.backtestPeriodFactor = input(
                     f"[+] Factor for backtest periods. If you choose 5, 1-Pd would mean 5-Pd returns. (number)(Optimal = 1, Current: {colorText.FAIL}{self.backtestPeriodFactor}{colorText.END}): "
                 ) or self.backtestPeriodFactor
@@ -367,6 +393,8 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 parser.set("config", "generalTimeout", str(self.generalTimeout))
                 parser.set("config", "logsEnabled", str(self.logsEnabledPrompt))
                 parser.set("config", "longTimeout", str(self.longTimeout))
+                parser.set("config", "marketOpen", str(self.marketOpen))
+                parser.set("config", "marketClose", str(self.marketClose))
                 parser.set("config", "maxBacktestWindow", str(self.maxBacktestWindow))
                 parser.set("config", "maxDashboardWidgetsPerRow", str(self.maxDashboardWidgetsPerRow))
                 parser.set("config", "maxdisplayresults", str(self.maxdisplayresults))
@@ -382,10 +410,15 @@ class tools(SingletonMixin, metaclass=SingletonType):
                     endPeriod = str(self.period)[-1].lower()
                     endPeriod = "d" if endPeriod not in ["d","o","y","x"] else ""
                 parser.set("config", "period", str(self.period + endPeriod))
+                parser.set("config", "pinnedMonitorSleepIntervalSeconds", str(self.pinnedMonitorSleepIntervalSeconds))
                 parser.set("config", "showPastStrategyData", str(self.showPastStrategyData))
                 parser.set("config", "showPinnedMenuEvenForNoResult", str(self.showPinnedMenuEvenForNoResult))
                 parser.set("config", "showunknowntrends", str(self.showunknowntrendsPrompt))
                 parser.set("config", "shuffle", str(self.shuffle))
+                parser.set("config", "soundAlertForMonitorOptions", str(self.soundAlertForMonitorOptions))
+                parser.set("config", "telegramImageCompressionRatio", str(self.telegramImageCompressionRatio))
+                parser.set("config", "telegramImageFormat", str(self.telegramImageFormat))
+                parser.set("config", "telegramImageQualityPercentage", str(self.telegramImageQualityPercentage))
                 parser.set("config", "useEMA", str(self.useEmaPrompt))
                 parser.set("config", "vcpVolumeContractionRatio", str(self.vcpVolumeContractionRatio))
 
@@ -443,6 +476,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 self.alwaysHiddenDisplayColumns = parser.get("config", "alwaysHiddenDisplayColumns")
                 self.duration = parser.get("config", "duration")
                 self.period = parser.get("config", "period")
+                self.pinnedMonitorSleepIntervalSeconds = int(parser.get("config", "pinnedMonitorSleepIntervalSeconds"))
                 self.minLTP = float(parser.get("filters", "minprice"))
                 self.maxLTP = float(parser.get("filters", "maxprice"))
                 self.volumeRatio = float(parser.get("filters", "volumeRatio"))
@@ -517,9 +551,17 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 self.minimumChangePercentage = float(parser.get("filters", "minimumchangepercentage"))
                 self.backtestPeriodFactor = int(parser.get("config", "backtestPeriodFactor"))
                 self.defaultMonitorOptions = str(parser.get("config", "defaultMonitorOptions"))
+                self.marketOpen = str(parser.get("config", "marketOpen"))
+                self.marketClose = str(parser.get("config", "marketClose"))
                 self.maxDashboardWidgetsPerRow = int(parser.get("config", "maxDashboardWidgetsPerRow"))
                 self.maxNumResultRowsInMonitor = int(parser.get("config", "maxNumResultRowsInMonitor"))
                 self.vcpVolumeContractionRatio = float(parser.get("config", "vcpVolumeContractionRatio"))
+                self.soundAlertForMonitorOptions = str(parser.get("config", "soundAlertForMonitorOptions"))
+                self.telegramImageCompressionRatio = float(parser.get("config", "telegramImageCompressionRatio"))
+                self.telegramImageFormat = str(parser.get("config", "telegramImageFormat"))
+                self.telegramImageQualityPercentage = int(parser.get("config", "telegramImageQualityPercentage"))
+                MarketHours().setMarketOpenHourMinute(self.marketOpen)
+                MarketHours().setMarketCloseHourMinute(self.marketClose)
             except configparser.NoOptionError as e:# pragma: no cover
                 self.default_logger.debug(e, exc_info=True)
                 # input(colorText.BOLD + colorText.FAIL +
@@ -571,18 +613,6 @@ class tools(SingletonMixin, metaclass=SingletonType):
         try:
             if requests_cache.is_installed():
                 requests_cache.clear()
-                # requests_cache.delete(expired=True)
-                # requests_cache.uninstall_cache()
-            # cache_file = os.path.join(Archiver.get_user_outputs_dir(), "PKDevTools_cache.sqlite")
-            # if os.path.isfile(cache_file):
-            #     os.remove(cache_file)
-            # self.deleteFileWithPattern("*_cache.sqlite")
-            # requests_cache.install_cache(
-            #     cache_name=f"{Archiver.get_user_outputs_dir().split(os.sep)[-1]}{os.sep}PKDevTools_cache",
-            #     db_path=os.path.join(
-            #         Archiver.get_user_outputs_dir(), "PKDevTools_cache.sqlite"
-            #     ),
-            # )
         except Exception as e:  # pragma: no cover
             # self.default_logger.debug(e, exc_info=True)
             pass

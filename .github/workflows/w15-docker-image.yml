@@ -86,9 +86,9 @@ jobs:
     
     - name: install buildx
       id: buildx
-      uses: crazy-max/ghaction-docker-buildx@v3.3.1
+      uses: docker/setup-buildx-action@v3.3.0
       with:
-        buildx-version: latest
+        version: latest
 
     - name: Publish latest base image to Docker Hub
       if: ${{ inputs.buildBase == 'Y' }}
@@ -102,21 +102,24 @@ jobs:
           --tag pkjmesra/pkscreener:latest \
           --platform linux/amd64,linux/arm64/v8 . --no-cache
 
-    - name: Publish latest image to Docker Hub
-      if: startsWith(github.ref, 'refs/heads/main')
+    - name: Publish latest images to Docker Hub
+      # if: startsWith(github.ref, 'refs/heads/main')
       run: |
         docker buildx create --use
+        docker buildx build --push \
+        --tag pkjmesra/pkscreener:latest \
+        --platform linux/amd64,linux/arm64/v8 . --no-cache
         docker buildx build --push \
           --tag pkjmesra/pkscreener:dev-latest \
           --platform linux/amd64,linux/arm64/v8 . --no-cache
         
-    - name: Publish release version image to Docker Hub
-      if: startsWith(${{ inputs.branch-name }}, 'refs/tags')
-      run: |
-        docker buildx create --use
-        docker buildx build --push \
-          --tag pkjmesra/pkscreener:latest \
-          --platform linux/amd64,linux/arm64/v8 . --no-cache
+    # - name: Publish release version image to Docker Hub
+    #   # if: startsWith(${{ inputs.branch-name }}, 'refs/tags')
+    #   run: |
+    #     docker buildx create --use
+    #     docker buildx build --push \
+    #       --tag pkjmesra/pkscreener:latest \
+    #       --platform linux/amd64,linux/arm64/v8 . --no-cache
 
   # Delete_Workflow_Run:
   #   runs-on: ubuntu-20.04

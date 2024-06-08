@@ -61,6 +61,7 @@ from PKDevTools.classes.PKDateUtilities import PKDateUtilities
 from PKDevTools.classes.Committer import Committer
 from PKDevTools.classes.SuppressOutput import SuppressOutput
 from PKDevTools.classes.FunctionTimeouts import exit_after
+from PKDevTools.classes.MarketHours import MarketHours
 from tabulate import tabulate
 
 import pkscreener.classes.ConfigManager as ConfigManager
@@ -698,9 +699,9 @@ class tools:
             # Let's go to the next line
             rowPixelRunValue += artfont_line_height + 1
 
-        im = im.resize(im.size, Image.ANTIALIAS, reducing_gap=2)
-        im = tools.addQuickWatermark(im,xVertical,dataSrc="Yahoo; Morningstar, Inc; National Stock Exchange of India Ltd;",dataSrcFontSize=ART_FONT_SIZE)
-        im.save(filename, format="png", bitmap_format="png", optimize=True, quality=20)
+        im = im.resize((int(im.size[0]*configManager.telegramImageCompressionRatio),int(im.size[1]*configManager.telegramImageCompressionRatio)), Image.ANTIALIAS, reducing_gap=2)
+        im = tools.addQuickWatermark(im,xVertical,dataSrc="Yahoo!finance; Morningstar, Inc; National Stock Exchange of India Ltd;TradingHours.com;",dataSrcFontSize=ART_FONT_SIZE)
+        im.save(filename, format=configManager.telegramImageFormat, bitmap_format=configManager.telegramImageFormat, optimize=True, quality=int(configManager.telegramImageQualityPercentage))
         # if 'RUNNER' not in os.environ.keys() and 'PKDevTools_Default_Log_Level' in os.environ.keys():
         # im.show()
 
@@ -780,17 +781,17 @@ class tools:
 
     def afterMarketStockDataExists(intraday=False, forceLoad=False):
         curr = PKDateUtilities.currentDateTime()
-        openTime = curr.replace(hour=9, minute=15)
+        openTime = curr.replace(hour=MarketHours().openHour, minute=MarketHours().openMinute)
         cache_date = PKDateUtilities.previousTradingDate(PKDateUtilities.nextTradingDate(curr)) #curr  # for monday to friday
         weekday = curr.weekday()
         isTrading = PKDateUtilities.isTradingTime()
         if (forceLoad and isTrading) or isTrading:
             #curr = PKDateUtilities.tradingDate()
             cache_date = PKDateUtilities.previousTradingDate(curr) #curr - datetime.timedelta(1)
-        # for monday to friday before 9:15 or between 9:15am to 3:30pm, we're backtesting
+        # for monday to friday before market open or between market open to market close, we're backtesting
         if curr < openTime:
             cache_date = PKDateUtilities.previousTradingDate(curr) # curr - datetime.timedelta(1)
-        if weekday == 0 and curr < openTime:  # for monday before 9:15
+        if weekday == 0 and curr < openTime:  # for monday before market open
             cache_date = PKDateUtilities.previousTradingDate(curr) #curr - datetime.timedelta(3)
         if weekday == 5 or weekday == 6:  # for saturday and sunday
             cache_date = PKDateUtilities.previousTradingDate(curr) # curr - datetime.timedelta(days=weekday - 4)
