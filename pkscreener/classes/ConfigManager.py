@@ -48,6 +48,9 @@ class tools(SingletonMixin, metaclass=SingletonType):
         super(tools, self).__init__()
         self.alwaysHiddenDisplayColumns = ",52Wk-L,RSI,22-Pd,Consol.,Pattern,CCI,Trend(22Prds)"
         self.consolidationPercentage = 10
+        self.telegramImageFormat = "JPEG"
+        self.telegramImageCompressionRatio = 0.6
+        self.telegramImageQualityPercentage = 20
         self.volumeRatio = 2.5
         self.minLTP = 20.0
         self.maxLTP = 50000
@@ -70,6 +73,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
         self.marketClose = "15:30"
         self.maxBacktestWindow = 30
         self.minVolume = 10000
+        self.soundAlertForMonitorOptions = "|{5}X:0:5:0:35:~X:12:7:4:>|X:12:30:1:~"
         self.morninganalysiscandlenumber = 25 # 9:40am IST, since market opens at 9:15am IST
         self.morninganalysiscandleduration = '1m'
         self.pinnedMonitorSleepIntervalSeconds = 5
@@ -87,7 +91,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
         self.maxDashboardWidgetsPerRow = 7
         self.maxNumResultRowsInMonitor = 3
         self.calculatersiintraday = False
-        self.defaultMonitorOptions = "X:12:9:2.5~X:12:23~X:12:28~X:12:31~|{1}X:0:23:>|X:0:27:>|X:0:31:~|{2}X:0:31:~|{3}X:0:27:~X:12:7:3:.01:1~|{5}X:0:5:0:35:~X:12:7:6:1~X:12:11:~X:12:12:i 5m~X:12:17~X:12:24~X:12:6:7:1~X:12:6:3~X:12:6:8~X:12:6:9~X:12:2:>|X:12:7:8:>|X:12:7:9:1:1:~X:12:6:10:1~X:12:7:3:.02:1~X:12:13:i 1m~X:12:2~|{1}X:0:29:"
+        self.defaultMonitorOptions = "X:12:9:2.5~X:12:23~X:12:28~X:12:31~|{1}X:0:23:>|X:0:27:>|X:0:31:~|{2}X:0:31:~|{3}X:0:27:~X:12:7:3:.01:1~|{5}X:0:5:0:35:~X:12:7:6:1~X:12:11:~X:12:12:i 5m~X:12:17~X:12:24~X:12:6:7:1~X:12:6:3~X:12:6:8~X:12:6:9~X:12:2:>|X:12:7:8:>|X:12:7:9:1:1:~X:12:6:10:1~X:12:7:4:>|X:12:30:1:~X:12:7:3:.02:1~X:12:13:i 1m~X:12:2~|{1}X:0:29:"
         self.minimumChangePercentage = 0
         self.daysToLookback = 22 * self.backtestPeriodFactor  # 1 month
         self.periods = [1,2,3,4,5,10,15,22,30]
@@ -186,6 +190,10 @@ class tools(SingletonMixin, metaclass=SingletonType):
             parser.set("config", "showPinnedMenuEvenForNoResult", "y" if self.showPinnedMenuEvenForNoResult else "n")
             parser.set("config", "showunknowntrends", "y" if self.showunknowntrends else "n")
             parser.set("config", "shuffle", "y" if self.shuffleEnabled else "n")
+            parser.set("config", "soundAlertForMonitorOptions", str(self.soundAlertForMonitorOptions))
+            parser.set("config", "telegramImageCompressionRatio", str(self.telegramImageCompressionRatio))
+            parser.set("config", "telegramImageFormat", str(self.telegramImageFormat))
+            parser.set("config", "telegramImageQualityPercentage", str(self.telegramImageQualityPercentage))
             parser.set("config", "useEMA", "y" if self.useEMA else "n")
             parser.set("config", "vcpVolumeContractionRatio", str(self.vcpVolumeContractionRatio))
 
@@ -264,7 +272,7 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 ).lower()
                 self.stageTwoPrompt = str(
                     input(
-                        f"[+] Screen only for Stage-2 stocks?\n(What are the stages? => https://www.investopedia.com/articles/trading/08/stock-cycle-trend-price.asp)\n(Y/N, Current: {colorText.FAIL}{'y' if self.stageTwo else 'n'}{colorText.END}): "
+                        f"[+] Screen only for Stage-2 stocks?\n     (What are the stages? => https://www.investopedia.com/articles/trading/08/stock-cycle-trend-price.asp)\n     (Y/N, Current: {colorText.FAIL}{'y' if self.stageTwo else 'n'}{colorText.END}): "
                     ) or ('y' if self.stageTwo else 'n')
                 ).lower()
                 self.useEmaPrompt = str(
@@ -407,6 +415,10 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 parser.set("config", "showPinnedMenuEvenForNoResult", str(self.showPinnedMenuEvenForNoResult))
                 parser.set("config", "showunknowntrends", str(self.showunknowntrendsPrompt))
                 parser.set("config", "shuffle", str(self.shuffle))
+                parser.set("config", "soundAlertForMonitorOptions", str(self.soundAlertForMonitorOptions))
+                parser.set("config", "telegramImageCompressionRatio", str(self.telegramImageCompressionRatio))
+                parser.set("config", "telegramImageFormat", str(self.telegramImageFormat))
+                parser.set("config", "telegramImageQualityPercentage", str(self.telegramImageQualityPercentage))
                 parser.set("config", "useEMA", str(self.useEmaPrompt))
                 parser.set("config", "vcpVolumeContractionRatio", str(self.vcpVolumeContractionRatio))
 
@@ -544,6 +556,10 @@ class tools(SingletonMixin, metaclass=SingletonType):
                 self.maxDashboardWidgetsPerRow = int(parser.get("config", "maxDashboardWidgetsPerRow"))
                 self.maxNumResultRowsInMonitor = int(parser.get("config", "maxNumResultRowsInMonitor"))
                 self.vcpVolumeContractionRatio = float(parser.get("config", "vcpVolumeContractionRatio"))
+                self.soundAlertForMonitorOptions = str(parser.get("config", "soundAlertForMonitorOptions"))
+                self.telegramImageCompressionRatio = float(parser.get("config", "telegramImageCompressionRatio"))
+                self.telegramImageFormat = str(parser.get("config", "telegramImageFormat"))
+                self.telegramImageQualityPercentage = int(parser.get("config", "telegramImageQualityPercentage"))
                 MarketHours().setMarketOpenHourMinute(self.marketOpen)
                 MarketHours().setMarketCloseHourMinute(self.marketClose)
             except configparser.NoOptionError as e:# pragma: no cover
